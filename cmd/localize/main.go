@@ -98,7 +98,7 @@ func runGenerate(osArgs []string) error {
 			return fmt.Errorf("opening Go bundle output file: %w", err)
 		}
 		var buf bytes.Buffer
-		err = gengo.Write(&buf, conf.GoPkgName, catalog)
+		err = gengo.Write(&buf, catalog.CopyrightNotice, conf.GoPkgName, catalog)
 		if err != nil {
 			return fmt.Errorf("generating Go bundle: %w", err)
 		}

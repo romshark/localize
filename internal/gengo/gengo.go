@@ -15,7 +15,10 @@ import (
 //go:embed template.gotmpl
 var templateGotmpl string
 
-func Write(w io.Writer, packageName string, catalogs ...*codeparser.Catalog) error {
+func Write(
+	w io.Writer, copyrightNotice string,
+	packageName string, catalogs ...*codeparser.Catalog,
+) error {
 	tmpl, err := template.New("gen").Parse(templateGotmpl)
 	if err != nil {
 		return fmt.Errorf("rendering template: %w", err)
@@ -35,10 +38,12 @@ func Write(w io.Writer, packageName string, catalogs ...*codeparser.Catalog) err
 		}
 	}
 	return tmpl.Execute(w, struct {
+		CopyrightNotice  string
 		GeneratorVersion string
 		Package          string
 		Catalogs         []catalogInfo
 	}{
+		CopyrightNotice:  copyrightNotice,
 		GeneratorVersion: "1",
 		Package:          packageName,
 		Catalogs:         catInfo,
