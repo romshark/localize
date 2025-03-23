@@ -17,7 +17,10 @@ import (
 	"mvdan.cc/gofumpt/format"
 )
 
-var OutputFormatPO = "po"
+var (
+	OutputFormatPO         = "po"
+	OutputFormatPOTemplate = "pot"
+)
 
 func main() {
 	if err := run(os.Args); err != nil {
@@ -73,8 +76,12 @@ func runGenerate(osArgs []string) error {
 		return ErrSourceErrors
 	}
 
+	if err := os.MkdirAll(conf.BundlePkgPath, 0o755); err != nil {
+		return fmt.Errorf("creating bundle package directory: %w", err)
+	}
+
 	{ // Write the native source catalog file.
-		fileName := outputFileName(conf.OutDirCatalog, conf.Locale, conf)
+		fileName := catalogFileName(conf.OutDirCatalog, conf.Locale, conf)
 		f, err := os.OpenFile(fileName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
 		if err != nil {
 			return fmt.Errorf("opening output file: %v", err)
@@ -83,8 +90,8 @@ func runGenerate(osArgs []string) error {
 	}
 
 	// Write translation template files.
-	for _, locale := range conf.TemplatesForLocales {
-		fileName := outputFileName(conf.OutDirCatalog, locale, conf)
+	for _, locale := range conf.LocalesForTranslation {
+		fileName := catalogTemplateFileName(conf.OutDirCatalogTemplates, locale, conf)
 		f, err := os.OpenFile(fileName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
 		if err != nil {
 			return fmt.Errorf("opening file: %v", err)
@@ -93,13 +100,17 @@ func runGenerate(osArgs []string) error {
 	}
 
 	{ // Generate Go code
-		f, err := os.OpenFile(conf.OutGoPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
+		f, err := os.OpenFile(
+			goBundleFileName(conf.BundlePkgPath),
+			os.O_CREATE|os.O_TRUNC|os.O_WRONLY,
+			0o644,
+		)
 		if err != nil {
 			return fmt.Errorf("opening Go bundle output file: %w", err)
 		}
 		var buf bytes.Buffer
 		err = gengo.Write(
-			&buf, conf.Locale, catalog.CopyrightNotice, conf.GoPkgName, catalog,
+			&buf, conf.Locale, catalog.CopyrightNotice, conf.BundlePkgPath, catalog,
 		)
 		if err != nil {
 			return fmt.Errorf("generating Go bundle: %w", err)
@@ -132,23 +143,33 @@ func runGenerate(osArgs []string) error {
 	return nil
 }
 
-func outputFileName(dir string, locale language.Tag, conf *ConfigGenerate) string {
-	fileName := conf.OutFilePrefix + "." + locale.String() + "." + conf.OutputFormat
-	return filepath.Join(dir, fileName)
+func catalogFileName(pkgDir string, locale language.Tag, conf *ConfigGenerate) string {
+	fileName := "catalog." + locale.String() + "." + conf.OutputFormat
+	return filepath.Join(pkgDir, fileName)
+}
+
+func catalogTemplateFileName(
+	pkgDir string, locale language.Tag, conf *ConfigGenerate,
+) string {
+	extension := conf.OutputFormat
+	if extension == OutputFormatPO {
+		extension = OutputFormatPOTemplate
+	}
+	fileName := "catalog." + locale.String() + "." + extension
+	return filepath.Join(pkgDir, fileName)
 }
 
 type ConfigGenerate struct {
-	Locale              language.Tag
-	TemplatesForLocales []language.Tag
-	SrcPathPattern      string
-	OutDirCatalog       string
-	OutputFormat        string
-	OutFilePrefix       string
-	TrimPath            bool
-	QuietMode           bool
-	VerboseMode         bool
-	GoPkgName           string
-	OutGoPath           string
+	Locale                 language.Tag
+	LocalesForTranslation  []language.Tag
+	SrcPathPattern         string
+	OutDirCatalog          string
+	OutDirCatalogTemplates string
+	OutputFormat           string
+	TrimPath               bool
+	QuietMode              bool
+	VerboseMode            bool
+	BundlePkgPath          string
 }
 
 // parseCLIArgsGenerate parses CLI arguments for command "generate"
@@ -159,22 +180,30 @@ func parseCLIArgsGenerate(osArgs []string) (*ConfigGenerate, error) {
 	var locale string
 
 	cli := flag.NewFlagSet(osArgs[0], flag.ExitOnError)
-	cli.StringVar(&locale, "l", "", "default locale in BCP 47")
-	cli.Var(&templatesForLangs, "t", "templates for translations")
-	cli.StringVar(&c.SrcPathPattern, "p", "./...", "source directory path")
-	cli.StringVar(&c.OutDirCatalog, "catdir", ".", "catalog output directory")
+	cli.StringVar(&locale, "l", "",
+		"default locale of the original source code texts in BCP 47")
+	cli.Var(&templatesForLangs, "t", "locale for translation (multiple allowed)")
+	cli.StringVar(&c.SrcPathPattern, "p", ".", "path to Go module")
+	cli.StringVar(&c.OutDirCatalog, "catdir", "",
+		"catalog output directory. Set to bundle package by default.")
+	cli.StringVar(&c.OutDirCatalogTemplates, "tmpldir", "",
+		"catalog template output directory. Set to bundle package by default.")
 	cli.StringVar(&c.OutputFormat, "f", OutputFormatPO, "catalog output format")
-	cli.StringVar(&c.OutFilePrefix, "filepref", "locale",
-		"catalog output file name prefix")
 	cli.BoolVar(&c.TrimPath, "trimpath", true, "enable source code path trimming")
 	cli.BoolVar(&c.QuietMode, "q", false, "disable all console logging")
 	cli.BoolVar(&c.VerboseMode, "v", false, "enables verbose console logging")
-	cli.StringVar(&c.GoPkgName, "pkg", "localizebundle", "generated Go package name")
-	cli.StringVar(&c.OutGoPath, "gopath", "./localizebundle/bundle_gen.go",
-		"generated Go bundle file output path")
+	cli.StringVar(&c.BundlePkgPath, "b", "localizebundle",
+		"path to generated Go bundle package relative to module path (-p)")
 
 	if err := cli.Parse(osArgs[2:]); err != nil {
 		return nil, fmt.Errorf("parsing: %w", err)
+	}
+
+	if c.OutDirCatalog == "" {
+		c.OutDirCatalog = c.BundlePkgPath
+	}
+	if c.OutDirCatalogTemplates == "" {
+		c.OutDirCatalogTemplates = c.BundlePkgPath
 	}
 
 	switch c.OutputFormat {
@@ -207,7 +236,7 @@ func parseCLIArgsGenerate(osArgs []string) (*ConfigGenerate, error) {
 	slices.Sort(templatesForLangs)
 	templatesForLangs = slices.Compact(templatesForLangs)
 
-	c.TemplatesForLocales = make([]language.Tag, len(templatesForLangs))
+	c.LocalesForTranslation = make([]language.Tag, len(templatesForLangs))
 	for i, s := range templatesForLangs {
 		locale, err := language.Parse(s)
 		if err != nil {
@@ -216,7 +245,13 @@ func parseCLIArgsGenerate(osArgs []string) (*ConfigGenerate, error) {
 				i, s, err,
 			)
 		}
-		c.TemplatesForLocales[i] = locale
+		if locale == c.Locale {
+			return nil, fmt.Errorf(
+				"locale %q picked both for translation and as original source locale",
+				locale,
+			)
+		}
+		c.LocalesForTranslation[i] = locale
 	}
 
 	return c, nil
@@ -233,4 +268,8 @@ func (i *flagArray) String() string {
 func (i *flagArray) Set(value string) error {
 	*i = append(*i, value)
 	return nil
+}
+
+func goBundleFileName(pkgPath string) string {
+	return filepath.Join(pkgPath, filepath.Base(pkgPath)+"_gen.go")
 }
