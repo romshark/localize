@@ -571,6 +571,6 @@ func validateQuantityArgument(
 		}
 	}
 	appendSrcErr(errs, pos, fmt.Errorf(
-		"%w: %T", ErrWrongQuantityArgType, tv.Type.String(),
+		"%w: %s", ErrWrongQuantityArgType, tv.Type.String(),
 	))
 }
