@@ -16,8 +16,9 @@ import (
 var languagesJSON []byte
 
 type model struct {
-	Plurals int    `json:"plurals"`
-	Formula string `json:"formula"`
+	Cases   []string `json:"cases"`
+	Plurals int      `json:"plurals"`
+	Formula string   `json:"formula"`
 }
 
 var byLang map[string]model
@@ -30,11 +31,32 @@ func init() {
 	}
 }
 
-// PluralForms returns a .po file compatible Plural-Forms gettext header value, e.g.
+type PluralForms struct {
+	Zero, One, Two, Few, Many, Other bool
+	GettextFormula                   string
+}
+
+// ByTag returns a .po file compatible Plural-Forms gettext header value, e.g.
 //
 //	locale=language.German
 //	header="nplurals=2; plural=n != 1"
-func PluralForms(locale language.Tag) (header string) {
+func ByTag(locale language.Tag) PluralForms {
 	m := byLang[locale.String()]
-	return fmt.Sprintf("nplurals=%d; plural=%s", m.Plurals, m.Formula)
+	forms := PluralForms{Other: true}
+	for _, c := range m.Cases {
+		switch c {
+		case "zero":
+			forms.Zero = true
+		case "one":
+			forms.One = true
+		case "two":
+			forms.Two = true
+		case "few":
+			forms.Few = true
+		case "many":
+			forms.Many = true
+		}
+	}
+	forms.GettextFormula = fmt.Sprintf("nplurals=%d; plural=%s", m.Plurals, m.Formula)
+	return forms
 }

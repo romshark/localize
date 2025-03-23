@@ -4,64 +4,159 @@
 // {{ .CopyrightNotice }}
 {{ end }}
 
+//      __                        __ _                      ___
+//     / /   ____   _____ ____ _ / /(_)____  ___     _   __<  /
+//    / /   / __ \ / ___// __ `// // //_  / / _ \   | | / // /
+//   / /___/ /_/ // /__ / /_/ // // /  / /_/  __/   | |/ // /
+//  /_____/\____/ \___/ \__,_//_//_/  /___/\___/    |___//_/
+
 // Package localizebundle provides generated localization readers for:
 // - en
 package {{ .Package }}
 
 import (
+	"fmt"
+
 	"github.com/romshark/localize"	
 	"golang.org/x/text/language"
+	"github.com/go-playground/locales"
+	{{ range .Catalogs }}
+	locales{{ .Locale }} "github.com/go-playground/locales/{{ .LocalesSubpackage }}"
+	{{ end }}
 )
 
 {{ range .Catalogs }}
+var {{ .TypeNameUnexported }}Locales = locales{{ .Locale }}.New()
 var {{ .TypeNameUnexported }}Tag language.Tag
 var {{ .TypeNameUnexported }}Base language.Base
 {{ end }}
 
 func init() {
 	{{ range .Catalogs }}
-	{{ .TypeNameUnexported }}Tag = language.MustParse({{ printf "%q" .Locale.String }})
+	{{ .TypeNameUnexported }}Tag = language.MustParse({{ printf "%q" .LocaleTag.String }})
 	{{ .TypeNameUnexported }}Base, _ = {{ .TypeNameUnexported }}Tag.Base()
 	{{ end }}
 }
 
-
 {{ range .Catalogs }}
 
-// {{ .TypeName }} is a localized reader implementation for locale "{{ .Locale.String }}".
+{{ if not .Native }}
+var {{ .TypeNameUnexported }}Static = map[string]string {
+	{{ range .MessagesStatic }}
+	{{ printf "%q" .Other }}: {{ printf "%q" .Other }},
+	{{ end }}
+}
+var {{ .TypeNameUnexported }}Plural = map[string]localize.Forms {
+	{{ range .MessagesPlural }}
+	{{ printf "%q" .Other }}: {
+		{{- if .Zero -}}
+		Zero: {{ printf "%q" .Zero }},
+		{{ end -}}
+		{{- if .One -}}
+		One: {{ printf "%q" .One }},
+		{{ end -}}
+		{{- if .Two -}}
+		Two: {{ printf "%q" .Two }},
+		{{ end -}}
+		{{- if .Few -}}
+		Few: {{ printf "%q" .Few }},
+		{{ end -}}
+		{{- if .Many -}}
+		Many: {{ printf "%q" .Many }},
+		{{ end -}}
+		Other: {{ printf "%q" .Other }},
+	},
+	{{ end }}
+}
+{{ else }}
+var {{ .TypeNameUnexported }}Plural = map[string]localize.Forms {
+	{{ range .MessagesPlural }}
+	{{ printf "%q" .Other }}: {
+		{{- if .Zero -}}
+		Zero: {{ printf "%q" .Zero }},
+		{{ end -}}
+		{{- if .One -}}
+		One: {{ printf "%q" .One }},
+		{{ end -}}
+		{{- if .Two -}}
+		Two: {{ printf "%q" .Two }},
+		{{ end -}}
+		{{- if .Few -}}
+		Few: {{ printf "%q" .Few }},
+		{{ end -}}
+		{{- if .Many -}}
+		Many: {{ printf "%q" .Many }},
+		{{ end -}}
+		Other: {{ printf "%q" .Other }},
+	},
+	{{ end }}
+}
+{{ end }}
+
+
+// {{ .TypeName }} is a localized reader implementation for locale "{{ printf "%q" .LocaleTag.String }}".
 type {{ .TypeName }} struct{}
 
 var _ localize.Reader = new({{ .TypeName }})
 
 // Locale provides the locale this reader localizes for.
-// Always returns the locale "{{ .Locale.String }}".
+// Always returns the locale "{{ printf "%q" .LocaleTag.String }}".
 func (r {{ .TypeName }}) Locale() language.Tag { return {{ .TypeNameUnexported }}Tag }
 
 // Base provides the base language this reader localizes for.
-// Always returns the base language of locale "{{ .Locale.String }}".
+// Always returns the base language of locale "{{ printf "%q" .LocaleTag.String }}".
 func (r {{ .TypeName }}) Base() language.Base { return {{ .TypeNameUnexported }}Base }
 
 // Text provides static 1-to-1 translations.
 func (r {{ .TypeName }}) Text(text string) (localized string) {
-	// TODO
-	return ""
+	{{ if .Native }}
+	// This reader reads the original source code's native locale.
+	// No translation necessary.
+	return text
+	{{ else }}
+	return {{ .TypeNameUnexported }}Static[text]
+	{{ end }}
 }
 
 // Block provides static 1-to-1 translations for a multi-line string block.
 // Common leading indentation is automatically removed.
 // For more information, see github.com/romshark/localize.Reader documentation.
 func (r {{ .TypeName }}) Block(text string) string {
-	// TODO
-	return ""
+	{{ if .Native }}
+	// This reader reads the original source code's native locale.
+	// No translation necessary.
+	return text
+	{{ else }}
+	return {{ .TypeNameUnexported }}Static[text]
+	{{ end }}
 }
 
 // Plural provides plural translations in cardinal form.
 // For more information, see github.com/romshark/localize.Reader documentation.
 func (r {{ .TypeName }}) Plural(
-	template localize.Forms, quantity int,
+	templates localize.Forms, quantity int,
 ) (localized string) {
-	// TODO
-	return ""
+	{{ if .Native }}
+	// This reader reads the original source code's native locale.
+	// No translation necessary.
+	forms := {{ .TypeNameUnexported }}Plural[templates.Other]
+	{{ else }}
+	forms := {{ .TypeNameUnexported }}Plural[templates.Other]
+	{{ end }}
+	tmpl := forms.Other
+	switch {{ .TypeNameUnexported }}Locales.CardinalPluralRule(float64(quantity), 0) {
+	case locales.PluralRuleZero:
+		tmpl = forms.Zero
+	case locales.PluralRuleOne:
+		return forms.One
+	case locales.PluralRuleTwo:
+		return forms.Two
+	case locales.PluralRuleFew:
+		return forms.Few
+	case locales.PluralRuleMany:
+		return forms.Many
+	}
+	return fmt.Sprintf(tmpl, quantity)
 }
 
 // PluralBlock behaves like Plural and formats like Block.
@@ -69,15 +164,34 @@ func (r {{ .TypeName }}) Plural(
 func (r {{ .TypeName }}) PluralBlock(
 	templates localize.Forms, quantity int,
 ) (localized string) {
-	// TODO
-	return ""
+	{{ if .Native }}
+	// This reader reads the original source code's native locale.
+	// No translation necessary.
+	forms := {{ .TypeNameUnexported }}Plural[templates.Other]
+	{{ else }}
+	forms := {{ .TypeNameUnexported }}Plural[templates.Other]
+	{{ end }}
+	tmpl := forms.Other
+	switch {{ .TypeNameUnexported }}Locales.CardinalPluralRule(float64(quantity), 0) {
+	case locales.PluralRuleZero:
+		tmpl = forms.Zero
+	case locales.PluralRuleOne:
+		return forms.One
+	case locales.PluralRuleTwo:
+		return forms.Two
+	case locales.PluralRuleFew:
+		return forms.Few
+	case locales.PluralRuleMany:
+		return forms.Many
+	}
+	return fmt.Sprintf(tmpl, quantity)
 }
 
 // Ordinal provides localized representation of numbers in ordinal form.
 // For more information, see github.com/romshark/localize.Reader documentation.
 func (r {{ .TypeName }}) Ordinal(n int) (localized string) {
 	// TODO
-	return ""
+	panic("not yet implemented")
 }
 
 {{ end }}

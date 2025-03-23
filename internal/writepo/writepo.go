@@ -41,7 +41,7 @@ func WriteCatalog(
 	fmt.Fprintln(w, "\"MIME-Version: 1.0\\n\"")
 	fmt.Fprintln(w, "\"Content-Type: text/plain; charset=UTF-8\\n\"")
 	fmt.Fprintln(w, "\"Content-Transfer-Encoding: 8bit\\n\"")
-	fmt.Fprintf(w, "\"Plural-Forms: %s\\n\"\n", pluralform.PluralForms(locale))
+	fmt.Fprintf(w, "\"Plural-Forms: %s\\n\"\n", pluralform.ByTag(locale).GettextFormula)
 	fmt.Fprint(w, "\"X-Generator: "+
 		"https://github.com/romshark/localize/cmd/localize\\n\"\n\n")
 

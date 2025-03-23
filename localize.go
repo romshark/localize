@@ -63,13 +63,13 @@ type Reader interface {
 
 	// Plural provides plural translations in cardinal form like:
 	//
-	//   template="You have %d unread emails":
+	//   templates.Other="You have %d unread emails":
 	//    localized="You have 5 unread emails" (quantity=5)
 	//    localized="You have 1 unread email" (quantity=1)
 	//
 	// For more information see unicode plural rules specification:
 	// https://www.unicode.org/cldr/charts/47/supplemental/language_plural_rules.html
-	Plural(template Forms, quantity int) (localized string)
+	Plural(templates Forms, quantity int) (localized string)
 
 	// PluralBlock behaves like Plural and formats like Block.
 	PluralBlock(templates Forms, quantity int) (localized string)
