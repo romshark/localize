@@ -73,29 +73,6 @@ var {{ .TypeNameUnexported }}Plural = map[string]localize.Forms {
 	},
 	{{ end }}
 }
-{{ else }}
-var {{ .TypeNameUnexported }}Plural = map[string]localize.Forms {
-	{{ range .MessagesPlural }}
-	{{ printf "%q" .Other }}: {
-		{{- if .Zero -}}
-		Zero: {{ printf "%q" .Zero }},
-		{{ end -}}
-		{{- if .One -}}
-		One: {{ printf "%q" .One }},
-		{{ end -}}
-		{{- if .Two -}}
-		Two: {{ printf "%q" .Two }},
-		{{ end -}}
-		{{- if .Few -}}
-		Few: {{ printf "%q" .Few }},
-		{{ end -}}
-		{{- if .Many -}}
-		Many: {{ printf "%q" .Many }},
-		{{ end -}}
-		Other: {{ printf "%q" .Other }},
-	},
-	{{ end }}
-}
 {{ end }}
 
 
@@ -191,22 +168,21 @@ func (r {{ .TypeName }}) Plural(
 	{{ if .Native }}
 	// This reader reads the original source code's native locale.
 	// No translation necessary.
-	forms := {{ .TypeNameUnexported }}Plural[templates.Other]
 	{{ else }}
-	forms := {{ .TypeNameUnexported }}Plural[templates.Other]
+	templates = {{ .TypeNameUnexported }}Plural[templates.Other]
 	{{ end }}
-	tmpl := forms.Other
+	tmpl := templates.Other
 	switch {{ .TypeNameUnexported }}Locales.CardinalPluralRule(q, 0) {
 	case locales.PluralRuleZero:
-		tmpl = forms.Zero
+		tmpl = templates.Zero
 	case locales.PluralRuleOne:
-		tmpl = forms.One
+		tmpl = templates.One
 	case locales.PluralRuleTwo:
-		tmpl = forms.Two
+		tmpl = templates.Two
 	case locales.PluralRuleFew:
-		tmpl = forms.Few
+		tmpl = templates.Few
 	case locales.PluralRuleMany:
-		tmpl = forms.Many
+		tmpl = templates.Many
 	}
 	return fmt.Sprintf(tmpl, quantity)
 }
