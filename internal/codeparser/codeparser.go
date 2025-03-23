@@ -286,8 +286,10 @@ func Parse(pathPattern string, locale language.Tag, trimpath, quiet, verbose boo
 
 func extractComments(group *ast.CommentGroup) (lines []string) {
 	for _, com := range group.List {
-		trimmed := strings.TrimSpace(com.Text)
-		lines = append(lines, trimmed)
+		s := strings.TrimSpace(com.Text)
+		s = strings.TrimPrefix(s, "//")
+		s = strings.TrimSpace(s)
+		lines = append(lines, s)
 	}
 	return lines
 }

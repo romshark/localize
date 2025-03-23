@@ -60,7 +60,7 @@ func WriteCatalog(
 		switch msg.FuncType {
 		case codeparser.FuncTypePlural, codeparser.FuncTypePluralBlock:
 			// Other
-			fmt.Fprintf(w, "msgid_plural %q\n\n", msg.Other)
+			fmt.Fprintf(w, "msgid_plural %q\n", msg.Other)
 			forms := pluralform.ByTag(locale)
 			if forms.Zero {
 				fmt.Fprintf(w, "#. zero\nmsgstr[0] %q\n", msg.Zero)
@@ -79,8 +79,9 @@ func WriteCatalog(
 			}
 		default:
 			// Other
-			fmt.Fprintf(w, "msgstr %q\n\n", msg.Other)
+			fmt.Fprintf(w, "msgstr %q\n", msg.Other)
 		}
+		fmt.Fprintln(w)
 	}
 }
 
