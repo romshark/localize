@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/romshark/localize/internal/cldr"
 	"github.com/romshark/localize/internal/codeparser"
 	"github.com/romshark/localize/internal/pluralform"
 	"golang.org/x/text/language"
@@ -58,9 +57,11 @@ func WriteCatalog(
 
 		fmt.Fprintf(w, "msgid %q\n", msg.Hash)
 
-		if msg.FuncType == codeparser.FuncTypePlural {
-			baseLang, _ := locale.Base()
-			forms := cldr.PluralFormsCardinalByLanguage[baseLang.String()]
+		switch msg.FuncType {
+		case codeparser.FuncTypePlural, codeparser.FuncTypePluralBlock:
+			// Other
+			fmt.Fprintf(w, "msgid_plural %q\n\n", msg.Other)
+			forms := pluralform.ByTag(locale)
 			if forms.Zero {
 				fmt.Fprintf(w, "#. zero\nmsgstr[0] %q\n", msg.Zero)
 			}
@@ -76,10 +77,10 @@ func WriteCatalog(
 			if forms.Many {
 				fmt.Fprintf(w, "#. many\nmsgstr[4] %q\n", msg.Many)
 			}
+		default:
+			// Other
+			fmt.Fprintf(w, "msgstr %q\n\n", msg.Other)
 		}
-
-		// Other
-		fmt.Fprintf(w, "msgstr %q\n\n", msg.Other)
 	}
 }
 
