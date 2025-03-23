@@ -209,12 +209,12 @@ func Parse(pathPattern string, locale language.Tag, trimpath, quiet, verbose boo
 							return false
 						}
 						f := parseForms(fileset, cl, pkg.TypesInfo, &srcErrs)
-						msg.Zero = fmtTemplate(funcType, f.Zero)
-						msg.One = fmtTemplate(funcType, f.One)
-						msg.Two = fmtTemplate(funcType, f.Two)
-						msg.Few = fmtTemplate(funcType, f.Few)
-						msg.Many = fmtTemplate(funcType, f.Many)
-						msg.Other = fmtTemplate(funcType, f.Other)
+						msg.Zero = mustFmtTemplate(funcType, f.Zero)
+						msg.One = mustFmtTemplate(funcType, f.One)
+						msg.Two = mustFmtTemplate(funcType, f.Two)
+						msg.Few = mustFmtTemplate(funcType, f.Few)
+						msg.Many = mustFmtTemplate(funcType, f.Many)
+						msg.Other = mustFmtTemplate(funcType, f.Other)
 
 					default:
 						var textValue string
@@ -240,7 +240,7 @@ func Parse(pathPattern string, locale language.Tag, trimpath, quiet, verbose boo
 							))
 							return true
 						}
-						msg.Other = strings.Trim(textValue, "\"")
+						msg.Other = mustFmtTemplate(funcType, textValue)
 					}
 
 					if verbose && !quiet {
@@ -410,7 +410,17 @@ func appendSrcErr(s []ErrorSrc, pos token.Position, err error) []ErrorSrc {
 	return append(s, ErrorSrc{Position: pos, Err: err})
 }
 
-func fmtTemplate(funcType string, templateText string) string {
+func mustFmtTemplate(funcType string, templateText string) string {
+	if templateText == "" {
+		return ""
+	}
+	if templateText[0] == '`' || templateText[0] == '"' {
+		var err error
+		templateText, err = strconv.Unquote(templateText)
+		if err != nil {
+			panic(err)
+		}
+	}
 	switch funcType {
 	case FuncTypeBlock, FuncTypePluralBlock:
 		return strfmt.Dedent(templateText)
