@@ -145,7 +145,7 @@ func Parse(pathPattern string, locale language.Tag, trimpath, quiet, verbose boo
 			packages.NeedDeps,
 		Fset: fileset,
 	}
-	pkgs, err := packages.Load(cfg, pathPattern)
+	pkgs, err := packages.Load(cfg, pathPattern+"/...")
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("loading packages: %w", err)
 	}
