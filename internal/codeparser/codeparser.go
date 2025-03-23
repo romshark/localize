@@ -22,6 +22,7 @@ import (
 
 	"github.com/cespare/xxhash"
 	"github.com/romshark/localize"
+	"github.com/romshark/localize/internal/fmtplaceholder"
 	"github.com/romshark/localize/internal/pluralform"
 	"github.com/romshark/localize/internal/strfmt"
 	"golang.org/x/text/language"
@@ -116,6 +117,9 @@ var (
 	)
 	ErrWrongQuantityArgType = errors.New(
 		"passing wrong type to quantity argument",
+	)
+	ErrWrongPlaceholderVerb = errors.New(
+		"wrong placeholder verb, use a numeric placeholder",
 	)
 )
 
@@ -547,14 +551,19 @@ func validateForms(
 }
 
 func validatePluralTemplate(errs *[]ErrorSrc, pos token.Position, s string) {
-	n := strings.Count(s, "%d")
-	if n < 1 {
+	placeholders := fmtplaceholder.Extract(s)
+	if len(placeholders) < 1 {
 		appendSrcErr(errs, pos, fmt.Errorf(
 			"%w", ErrMissingQuantityPlaceholder,
 		))
-	} else if n > 1 {
+	} else if len(placeholders) > 1 {
 		appendSrcErr(errs, pos, fmt.Errorf(
-			"%w: found %d", ErrTooManyQuantityPlaceholders, n,
+			"%w: found %d", ErrTooManyQuantityPlaceholders, len(placeholders),
+		))
+	}
+	if !fmtplaceholder.Numeric(placeholders[0]) {
+		appendSrcErr(errs, pos, fmt.Errorf(
+			"%w: verb found: %q", ErrWrongPlaceholderVerb, placeholders[0],
 		))
 	}
 }
