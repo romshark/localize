@@ -22,6 +22,7 @@ import (
 
 	"github.com/cespare/xxhash"
 	"github.com/romshark/localize"
+	"github.com/romshark/localize/internal/pluralform"
 	"github.com/romshark/localize/internal/strfmt"
 	"golang.org/x/text/language"
 	"golang.org/x/tools/go/packages"
@@ -102,6 +103,17 @@ var (
 	ErrSourceArgType   = errors.New(
 		"non-literal argument (only string literals and constants are supported)",
 	)
+	ErrMissingPluralForm     = errors.New("missing required plural form")
+	ErrUnsupportedPluralForm = errors.New(
+		"plural form not supported by source language",
+	)
+	ErrMissingQuantityPlaceholder = errors.New(
+		"missing quantity placeholder \"%d\" in template",
+	)
+	ErrTooManyQuantityPlaceholders = errors.New(
+		"plural template strings are expected to " +
+			"have only one quantity placeholder \"%d\"",
+	)
 )
 
 type ErrorSrc struct {
@@ -115,6 +127,8 @@ func Parse(pathPattern string, locale language.Tag, trimpath, quiet, verbose boo
 ) {
 	fileset := token.NewFileSet()
 	stats = new(Statistics)
+
+	pluralForms := pluralform.ByTag(locale)
 
 	cfg := &packages.Config{
 		Mode: packages.NeedFiles |
@@ -203,7 +217,7 @@ func Parse(pathPattern string, locale language.Tag, trimpath, quiet, verbose boo
 						cl, ok := call.Args[0].(*ast.CompositeLit)
 						if !ok {
 							// Unsupported argument value type.
-							srcErrs = appendSrcErr(srcErrs, pos, fmt.Errorf(
+							appendSrcErr(&srcErrs, pos, fmt.Errorf(
 								"%w: %s", ErrSourceArgType, typeKind(call.Args[0]),
 							))
 							return false
@@ -216,6 +230,8 @@ func Parse(pathPattern string, locale language.Tag, trimpath, quiet, verbose boo
 						msg.Many = mustFmtTemplate(funcType, f.Many)
 						msg.Other = mustFmtTemplate(funcType, f.Other)
 
+						validateForms(&srcErrs, locale, pos, pluralForms, msg)
+
 					default:
 						var textValue string
 						switch k := call.Args[0].(type) {
@@ -227,7 +243,7 @@ func Parse(pathPattern string, locale language.Tag, trimpath, quiet, verbose boo
 								textValue = constant.StringVal(v)
 							} else {
 								// Unsupported argument value type.
-								srcErrs = appendSrcErr(srcErrs, pos, fmt.Errorf(
+								appendSrcErr(&srcErrs, pos, fmt.Errorf(
 									"%w: %s", ErrSourceArgType, typeKind(call.Args[0]),
 								))
 								return true
@@ -235,7 +251,7 @@ func Parse(pathPattern string, locale language.Tag, trimpath, quiet, verbose boo
 						case *ast.BasicLit:
 							textValue = k.Value
 						default:
-							srcErrs = appendSrcErr(srcErrs, pos, fmt.Errorf(
+							appendSrcErr(&srcErrs, pos, fmt.Errorf(
 								"%w: %s", ErrSourceArgType, typeKind(call.Args[0]),
 							))
 							return true
@@ -251,7 +267,7 @@ func Parse(pathPattern string, locale language.Tag, trimpath, quiet, verbose boo
 					}
 
 					if msg.Other == "" {
-						srcErrs = appendSrcErr(srcErrs, pos, ErrSourceTextEmpty)
+						appendSrcErr(&srcErrs, pos, ErrSourceTextEmpty)
 					}
 
 					for _, group := range file.Comments {
@@ -400,14 +416,14 @@ func parseForms(
 	}
 
 	if forms.Other == "" {
-		*srcErrs = appendSrcErr(*srcErrs, fset.Position(cl.Pos()), ErrSourceTextEmpty)
+		appendSrcErr(srcErrs, fset.Position(cl.Pos()), ErrSourceTextEmpty)
 	}
 
 	return forms
 }
 
-func appendSrcErr(s []ErrorSrc, pos token.Position, err error) []ErrorSrc {
-	return append(s, ErrorSrc{Position: pos, Err: err})
+func appendSrcErr(s *[]ErrorSrc, pos token.Position, err error) {
+	*s = append(*s, ErrorSrc{Position: pos, Err: err})
 }
 
 func mustFmtTemplate(funcType string, templateText string) string {
@@ -426,4 +442,112 @@ func mustFmtTemplate(funcType string, templateText string) string {
 		return strfmt.Dedent(templateText)
 	}
 	return templateText
+}
+
+func validateForms(
+	errs *[]ErrorSrc, locale language.Tag, pos token.Position,
+	pluralForms pluralform.PluralForms, msg Msg,
+) {
+	// TODO returns the correct line:column for the particular line the error was
+	// detected at since currently it's the pos of the call.
+	if msg.Other == "" {
+		appendSrcErr(errs, pos, fmt.Errorf(
+			"%w: all languages require form Other",
+			ErrMissingPluralForm,
+		))
+	}
+	validatePluralTemplate(errs, pos, msg.Other)
+
+	if pluralForms.Zero && msg.Zero == "" {
+		appendSrcErr(errs, pos, fmt.Errorf(
+			"%w: locale %q requires plural form Zero",
+			ErrMissingPluralForm, locale.String(),
+		))
+	}
+	if !pluralForms.Zero && msg.Zero != "" {
+		appendSrcErr(errs, pos, fmt.Errorf(
+			"%w: locale %q doesn't support plural form Zero",
+			ErrUnsupportedPluralForm, locale.String(),
+		))
+	}
+	if msg.Zero != "" {
+		validatePluralTemplate(errs, pos, msg.Zero)
+	}
+
+	if pluralForms.One && msg.One == "" {
+		appendSrcErr(errs, pos, fmt.Errorf(
+			"%w: locale %q requires plural form One",
+			ErrMissingPluralForm, locale.String(),
+		))
+	}
+	if !pluralForms.One && msg.One != "" {
+		appendSrcErr(errs, pos, fmt.Errorf(
+			"%w: locale %q doesn't support plural form One",
+			ErrUnsupportedPluralForm, locale.String(),
+		))
+	}
+	if msg.One != "" {
+		validatePluralTemplate(errs, pos, msg.One)
+	}
+
+	if pluralForms.Two && msg.Two == "" {
+		appendSrcErr(errs, pos, fmt.Errorf(
+			"%w: locale %q requires plural form Two",
+			ErrMissingPluralForm, locale.String(),
+		))
+	}
+	if !pluralForms.Two && msg.Two != "" {
+		appendSrcErr(errs, pos, fmt.Errorf(
+			"%w: locale %q doesn't support plural form Two",
+			ErrUnsupportedPluralForm, locale.String(),
+		))
+	}
+	if msg.Two != "" {
+		validatePluralTemplate(errs, pos, msg.Two)
+	}
+
+	if pluralForms.Few && msg.Few == "" {
+		appendSrcErr(errs, pos, fmt.Errorf(
+			"%w: locale %q requires plural form Few",
+			ErrMissingPluralForm, locale.String(),
+		))
+	}
+	if !pluralForms.Few && msg.Few != "" {
+		appendSrcErr(errs, pos, fmt.Errorf(
+			"%w: locale %q doesn't support plural form Few",
+			ErrUnsupportedPluralForm, locale.String(),
+		))
+	}
+	if msg.Few != "" {
+		validatePluralTemplate(errs, pos, msg.Few)
+	}
+
+	if pluralForms.Many && msg.Many == "" {
+		appendSrcErr(errs, pos, fmt.Errorf(
+			"%w: locale %q requires plural form Many",
+			ErrMissingPluralForm, locale.String(),
+		))
+	}
+	if !pluralForms.Many && msg.Many != "" {
+		appendSrcErr(errs, pos, fmt.Errorf(
+			"%w: locale %q doesn't support plural form Many",
+			ErrUnsupportedPluralForm, locale.String(),
+		))
+	}
+	if msg.Many != "" {
+		validatePluralTemplate(errs, pos, msg.Many)
+	}
+}
+
+func validatePluralTemplate(errs *[]ErrorSrc, pos token.Position, s string) {
+	n := strings.Count(s, "%d")
+	if n < 1 {
+		appendSrcErr(errs, pos, fmt.Errorf(
+			"%w", ErrMissingQuantityPlaceholder,
+		))
+	} else if n > 1 {
+		appendSrcErr(errs, pos, fmt.Errorf(
+			"%w: found %d", ErrTooManyQuantityPlaceholders, n,
+		))
+	}
 }
