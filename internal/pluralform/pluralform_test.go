@@ -11,5 +11,5 @@ import (
 
 func TestPluralForms(t *testing.T) {
 	const expect = `nplurals=2; plural=n != 1`
-	require.Equal(t, expect, pluralform.ByTag(language.German))
+	require.Equal(t, expect, pluralform.ByTag(language.German).GettextFormula)
 }
