@@ -89,7 +89,7 @@ type Bundle struct {
 }
 
 var (
-	ErrEmptyBundle    = errors.New("empty bundle")
+	ErrEmptyBundle    = errors.New("bundle has no catalogs")
 	ErrReaderConflict = errors.New("conflicting readers")
 )
 
