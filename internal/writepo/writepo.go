@@ -51,13 +51,13 @@ func WriteCatalog(
 			fmt.Fprintf(w, "#: %s:%d:%d\n", p.Filename, p.Line, p.Column)
 		}
 
-		fmt.Fprintf(w, "#. hash: %q\n", msg.Hash)
 		if msg.Description != "" {
 			for l := range iterateLines(msg.Description) {
 				fmt.Fprintf(w, "#. %s\n", l)
 			}
 		}
 
+		fmt.Fprintf(w, "msgctxt %q\n", msg.Hash)
 		fmt.Fprintf(w, "msgid %q\n", msg.Other)
 
 		switch msg.FuncType {
