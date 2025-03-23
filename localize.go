@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/go-playground/locales"
 	"golang.org/x/text/language"
 )
 
@@ -64,26 +65,19 @@ type Reader interface {
 	// Plural provides plural translations in cardinal form like:
 	//
 	//   templates.Other="You have %d unread emails":
-	//    localized="You have 5 unread emails" (quantity=5)
-	//    localized="You have 1 unread email" (quantity=1)
+	//    localized="You have 5 unread emails" (quantity=int(5))
+	//    localized="You have 1 unread email" (quantity=int(1))
 	//
 	// For more information see unicode plural rules specification:
 	// https://www.unicode.org/cldr/charts/47/supplemental/language_plural_rules.html
-	Plural(templates Forms, quantity int) (localized string)
+	Plural(templates Forms, quantity any) (localized string)
 
 	// PluralBlock behaves like Plural and formats like Block.
-	PluralBlock(templates Forms, quantity int) (localized string)
+	PluralBlock(templates Forms, quantity any) (localized string)
 
-	// Ordinal provides localized representation of numbers in ordinal form like:
-	//
-	//   "1st" (en; n=1)
-	//   "2nd" (en; n=2)
-	//   "23rd" (en; n=23)
-	//   "104th" (en; n=104)
-	//
-	// For more information see unicode plural rules specification:
-	// https://www.unicode.org/cldr/charts/47/supplemental/language_plural_rules.html
-	Ordinal(n int) (localized string)
+	// Translator returns the localized translator of github.com/go-playground/locales
+	// for the locale this reader localizes for.
+	Translator() locales.Translator
 }
 
 // Bundle is a group of localized readers.

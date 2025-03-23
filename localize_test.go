@@ -3,6 +3,7 @@ package localize_test
 import (
 	"testing"
 
+	"github.com/go-playground/locales"
 	"github.com/romshark/localize"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/text/language"
@@ -14,7 +15,7 @@ type MockReader struct {
 	tag      language.Tag
 	static   map[string]string
 	cardinal map[string]MockReaderPlural
-	ordinal  func(n int) string
+	ordinal  func(n any) string
 }
 
 var _ localize.Reader = MockReader{}
@@ -37,7 +38,7 @@ const (
 func (r MockReader) Text(text string) string  { return r.static[text] }
 func (r MockReader) Block(text string) string { return r.static[text] }
 
-func (r MockReader) Plural(templates localize.Forms, quantity int) string {
+func (r MockReader) Plural(templates localize.Forms, quantity any) string {
 	// TODO
 	_ = r.tag
 	_ = r.static
@@ -70,7 +71,7 @@ func (r MockReader) Plural(templates localize.Forms, quantity int) string {
 	// return fmt.Sprintf(p.Other, quantity)
 }
 
-func (r MockReader) PluralBlock(templates localize.Forms, quantity int) string {
+func (r MockReader) PluralBlock(templates localize.Forms, quantity any) string {
 	// TODO
 	return ""
 	// p := r.cardinal[template]
@@ -99,7 +100,9 @@ func (r MockReader) PluralBlock(templates localize.Forms, quantity int) string {
 	// return fmt.Sprintf(p.Other, quantity)
 }
 
-func (r MockReader) Ordinal(n int) string { return r.ordinal(n) }
+func (r MockReader) Translator() locales.Translator {
+	panic("not yet implemented")
+}
 
 var _ localize.Reader = new(MockReader)
 

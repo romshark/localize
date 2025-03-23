@@ -25,6 +25,11 @@ import (
 	{{ end }}
 )
 
+const (
+	minInt53 = -1 << 53
+	maxInt53 = 1 << 53
+)
+
 {{ range .Catalogs }}
 var {{ .TypeNameUnexported }}Locales = locales{{ .Locale }}.New()
 var {{ .TypeNameUnexported }}Tag language.Tag
@@ -134,8 +139,55 @@ func (r {{ .TypeName }}) Block(text string) string {
 // Plural provides plural translations in cardinal form.
 // For more information, see github.com/romshark/localize.Reader documentation.
 func (r {{ .TypeName }}) Plural(
-	templates localize.Forms, quantity int,
+	templates localize.Forms, quantity any,
 ) (localized string) {
+	var q float64
+	switch n := quantity.(type) {
+	case uint:
+		if n >= maxInt53 {
+			// Lossy conversion.
+			return fmt.Sprintf(templates.Other, n)
+		}
+		q = float64(n)
+	case uint8:
+		q = float64(n)
+	case uint16:
+		q = float64(n)
+	case uint32:
+		q = float64(n)
+	case uint64:
+		if n >= maxInt53 {
+			// Lossy conversion.
+			return fmt.Sprintf(templates.Other, n)
+		}
+		q = float64(n)
+	case int:
+		if n >= maxInt53 || n <= minInt53 {
+			// Lossy conversion.
+			return fmt.Sprintf(templates.Other, n)
+		}
+		q = float64(n)
+	case int8:
+		q = float64(n)
+	case int16:
+		q = float64(n)
+	case int32:
+		q = float64(n)
+	case int64:
+		if n >= maxInt53 || n <= minInt53 {
+			// Lossy conversion.
+			return fmt.Sprintf(templates.Other, n)
+		}
+		q = float64(n)
+	case float32:
+		q = float64(n)
+	case float64:
+		q = float64(n)
+	default:
+		// Incorrect input type, fallback to default form.
+		return fmt.Sprintf(templates.Other, quantity)
+	}
+
 	{{ if .Native }}
 	// This reader reads the original source code's native locale.
 	// No translation necessary.
@@ -144,7 +196,7 @@ func (r {{ .TypeName }}) Plural(
 	forms := {{ .TypeNameUnexported }}Plural[templates.Other]
 	{{ end }}
 	tmpl := forms.Other
-	switch {{ .TypeNameUnexported }}Locales.CardinalPluralRule(float64(quantity), 0) {
+	switch {{ .TypeNameUnexported }}Locales.CardinalPluralRule(q, 0) {
 	case locales.PluralRuleZero:
 		tmpl = forms.Zero
 	case locales.PluralRuleOne:
@@ -162,36 +214,14 @@ func (r {{ .TypeName }}) Plural(
 // PluralBlock behaves like Plural and formats like Block.
 // For more information, see github.com/romshark/localize.Reader documentation.
 func (r {{ .TypeName }}) PluralBlock(
-	templates localize.Forms, quantity int,
-) (localized string) {
-	{{ if .Native }}
-	// This reader reads the original source code's native locale.
-	// No translation necessary.
-	forms := {{ .TypeNameUnexported }}Plural[templates.Other]
-	{{ else }}
-	forms := {{ .TypeNameUnexported }}Plural[templates.Other]
-	{{ end }}
-	tmpl := forms.Other
-	switch {{ .TypeNameUnexported }}Locales.CardinalPluralRule(float64(quantity), 0) {
-	case locales.PluralRuleZero:
-		tmpl = forms.Zero
-	case locales.PluralRuleOne:
-		return forms.One
-	case locales.PluralRuleTwo:
-		return forms.Two
-	case locales.PluralRuleFew:
-		return forms.Few
-	case locales.PluralRuleMany:
-		return forms.Many
-	}
-	return fmt.Sprintf(tmpl, quantity)
+	templates localize.Forms, quantity any,
+) (localized string) {	
+	return r.Plural(templates, quantity)
 }
 
-// Ordinal provides localized representation of numbers in ordinal form.
-// For more information, see github.com/romshark/localize.Reader documentation.
-func (r {{ .TypeName }}) Ordinal(n int) (localized string) {
-	// TODO
-	panic("not yet implemented")
+// Translator returns the localized translator of github.com/go-playground/locales/{{ .LocalesSubpackage }}
+func (r {{ .TypeName }}) Translator() locales.Translator {
+	return {{ .TypeNameUnexported }}Locales
 }
 
 {{ end }}
