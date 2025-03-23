@@ -8,7 +8,7 @@ import (
 	"golang.org/x/text/language"
 )
 
-// Forms defines the different forms
+// Forms defines the CLDR plural forms
 //
 // For more information, see CLDR documentation:
 // https://cldr.unicode.org/index/cldr-spec/plural-rules
