@@ -200,13 +200,13 @@ func (r {{ .TypeName }}) Plural(
 	case locales.PluralRuleZero:
 		tmpl = forms.Zero
 	case locales.PluralRuleOne:
-		return forms.One
+		tmpl = forms.One
 	case locales.PluralRuleTwo:
-		return forms.Two
+		tmpl = forms.Two
 	case locales.PluralRuleFew:
-		return forms.Few
+		tmpl = forms.Few
 	case locales.PluralRuleMany:
-		return forms.Many
+		tmpl = forms.Many
 	}
 	return fmt.Sprintf(tmpl, quantity)
 }
