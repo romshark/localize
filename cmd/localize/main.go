@@ -86,17 +86,18 @@ func runGenerate(osArgs []string) error {
 		if err != nil {
 			return fmt.Errorf("opening output file: %v", err)
 		}
-		writepo.WriteCatalog(f, conf.Locale, catalog)
+		writepo.WriteCatalog(f, conf.Locale, catalog, false)
 	}
 
-	// Write translation template files.
-	for _, locale := range conf.LocalesForTranslation {
-		fileName := catalogTemplateFileName(conf.OutDirCatalogTemplates, locale, conf)
-		f, err := os.OpenFile(fileName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+	// Write translation template file.
+	{
+		f, err := os.OpenFile(
+			conf.OutPathCatalogTemplate, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644,
+		)
 		if err != nil {
 			return fmt.Errorf("opening file: %v", err)
 		}
-		writepo.WriteTemplate(f, locale, conf.Locale, catalog)
+		writepo.WriteCatalog(f, conf.Locale, catalog, true)
 	}
 
 	{ // Generate Go code
@@ -148,15 +149,12 @@ func catalogFileName(pkgDir string, locale language.Tag, conf *ConfigGenerate) s
 	return filepath.Join(pkgDir, fileName)
 }
 
-func catalogTemplateFileName(
-	pkgDir string, locale language.Tag, conf *ConfigGenerate,
-) string {
-	extension := conf.OutputFormat
+func catalogTemplateFileName(outPath, outFormat string) string {
+	extension := outFormat
 	if extension == OutputFormatPO {
 		extension = OutputFormatPOTemplate
 	}
-	fileName := "catalog." + locale.String() + "." + extension
-	return filepath.Join(pkgDir, fileName)
+	return filepath.Join(outPath, "catalog."+extension)
 }
 
 type ConfigGenerate struct {
@@ -164,7 +162,7 @@ type ConfigGenerate struct {
 	LocalesForTranslation  []language.Tag
 	SrcPathPattern         string
 	OutDirCatalog          string
-	OutDirCatalogTemplates string
+	OutPathCatalogTemplate string
 	OutputFormat           string
 	TrimPath               bool
 	QuietMode              bool
@@ -186,8 +184,8 @@ func parseCLIArgsGenerate(osArgs []string) (*ConfigGenerate, error) {
 	cli.StringVar(&c.SrcPathPattern, "p", ".", "path to Go module")
 	cli.StringVar(&c.OutDirCatalog, "catdir", "",
 		"catalog output directory. Set to bundle package by default.")
-	cli.StringVar(&c.OutDirCatalogTemplates, "tmpldir", "",
-		"catalog template output directory. Set to bundle package by default.")
+	cli.StringVar(&c.OutPathCatalogTemplate, "tmpl", "",
+		"catalog template output file path. Set to bundle package by default.")
 	cli.StringVar(&c.OutputFormat, "f", OutputFormatPO, "catalog output format")
 	cli.BoolVar(&c.TrimPath, "trimpath", true, "enable source code path trimming")
 	cli.BoolVar(&c.QuietMode, "q", false, "disable all console logging")
@@ -202,8 +200,10 @@ func parseCLIArgsGenerate(osArgs []string) (*ConfigGenerate, error) {
 	if c.OutDirCatalog == "" {
 		c.OutDirCatalog = c.BundlePkgPath
 	}
-	if c.OutDirCatalogTemplates == "" {
-		c.OutDirCatalogTemplates = c.BundlePkgPath
+	if c.OutPathCatalogTemplate == "" {
+		c.OutPathCatalogTemplate = catalogTemplateFileName(
+			c.BundlePkgPath, c.OutputFormat,
+		)
 	}
 
 	switch c.OutputFormat {
