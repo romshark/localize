@@ -112,7 +112,10 @@ var (
 	)
 	ErrTooManyQuantityPlaceholders = errors.New(
 		"plural template strings are expected to " +
-			"have only one quantity placeholder \"%d\"",
+			`have only one quantity placeholder "%d"`,
+	)
+	ErrWrongQuantityArgType = errors.New(
+		"passing wrong type to quantity argument",
 	)
 )
 
@@ -231,6 +234,10 @@ func Parse(pathPattern string, locale language.Tag, trimpath, quiet, verbose boo
 						msg.Other = mustFmtTemplate(funcType, f.Other)
 
 						validateForms(&srcErrs, locale, pos, pluralForms, msg)
+
+						validateQuantityArgument(
+							&srcErrs, pos, call.Args[1], pkg.TypesInfo,
+						)
 
 					default:
 						var textValue string
@@ -550,4 +557,20 @@ func validatePluralTemplate(errs *[]ErrorSrc, pos token.Position, s string) {
 			"%w: found %d", ErrTooManyQuantityPlaceholders, n,
 		))
 	}
+}
+
+func validateQuantityArgument(
+	errs *[]ErrorSrc, pos token.Position, expr ast.Expr, info *types.Info,
+) {
+	tv := info.Types[expr]
+	basic, ok := tv.Type.Underlying().(*types.Basic)
+	if ok {
+		infoBits := basic.Info()
+		if infoBits&(types.IsInteger|types.IsUnsigned|types.IsFloat) != 0 {
+			return
+		}
+	}
+	appendSrcErr(errs, pos, fmt.Errorf(
+		"%w: %T", ErrWrongQuantityArgType, tv.Type.String(),
+	))
 }
