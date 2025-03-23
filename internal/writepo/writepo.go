@@ -18,6 +18,8 @@ import (
 func WriteCatalog(
 	w io.Writer, locale language.Tag, catalog *codeparser.Catalog,
 ) {
+	pluralForms := pluralform.ByTag(locale)
+
 	// Header
 	if catalog.CopyrightNotice != "" {
 		fmt.Fprintf(w, "# %s\n", catalog.CopyrightNotice)
@@ -49,33 +51,37 @@ func WriteCatalog(
 			fmt.Fprintf(w, "#: %s:%d:%d\n", p.Filename, p.Line, p.Column)
 		}
 
+		fmt.Fprintf(w, "#. hash: %q\n", msg.Hash)
 		if msg.Description != "" {
 			for l := range iterateLines(msg.Description) {
 				fmt.Fprintf(w, "#. %s\n", l)
 			}
 		}
 
-		fmt.Fprintf(w, "msgid %q\n", msg.Hash)
+		fmt.Fprintf(w, "msgid %q\n", msg.Other)
 
 		switch msg.FuncType {
 		case codeparser.FuncTypePlural, codeparser.FuncTypePluralBlock:
-			// Other
 			fmt.Fprintf(w, "msgid_plural %q\n", msg.Other)
-			forms := pluralform.ByTag(locale)
-			if forms.Zero {
-				fmt.Fprintf(w, "#. zero\nmsgstr[0] %q\n", msg.Zero)
-			}
-			if forms.One {
-				fmt.Fprintf(w, "#. one\nmsgstr[1] %q\n", msg.One)
-			}
-			if forms.Two {
-				fmt.Fprintf(w, "#. two\nmsgstr[2] %q\n", msg.Two)
-			}
-			if forms.Few {
-				fmt.Fprintf(w, "#. few\nmsgstr[3] %q\n", msg.Few)
-			}
-			if forms.Many {
-				fmt.Fprintf(w, "#. many\nmsgstr[4] %q\n", msg.Many)
+			for i, f := range pluralForms.Forms {
+				var txt string
+				switch f {
+				case "zero":
+					txt = msg.Zero
+				case "one":
+					txt = msg.One
+				case "two":
+					txt = msg.Two
+				case "few":
+					txt = msg.Few
+				case "many":
+					txt = msg.Many
+				case "other":
+					txt = msg.Other
+				default:
+					panic("unknown case: %q")
+				}
+				fmt.Fprintf(w, "msgstr[%d] %q\n", i, txt)
 			}
 		default:
 			// Other

@@ -33,6 +33,7 @@ func init() {
 
 type PluralForms struct {
 	Zero, One, Two, Few, Many, Other bool
+	Forms                            []string
 	GettextFormula                   string
 }
 
@@ -57,6 +58,7 @@ func ByTag(locale language.Tag) PluralForms {
 			forms.Many = true
 		}
 	}
+	forms.Forms = m.Cases
 	forms.GettextFormula = fmt.Sprintf("nplurals=%d; plural=%s", m.Plurals, m.Formula)
 	return forms
 }
