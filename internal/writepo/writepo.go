@@ -22,57 +22,57 @@ func WriteCatalog(
 
 	// Header
 	if catalog.CopyrightNotice != "" {
-		fmt.Fprintf(w, "# %s\n", catalog.CopyrightNotice)
+		_, _ = fmt.Fprintf(w, "# %s\n", catalog.CopyrightNotice)
 	}
 
 	// Metadata block
-	fmt.Fprintln(w, `msgid ""`)
-	fmt.Fprintln(w, `msgstr ""`)
+	_, _ = fmt.Fprintln(w, `msgid ""`)
+	_, _ = fmt.Fprintln(w, `msgstr ""`)
 	if !catalog.LastRevision.DateTime.IsZero() {
 		formatted := catalog.LastRevision.DateTime.Format(time.RFC3339)
-		fmt.Fprintf(w, "\"PO-Revision-Date: %s\"\n", formatted)
+		_, _ = fmt.Fprintf(w, "\"PO-Revision-Date: %s\"\n", formatted)
 	}
 	if template {
 		if catalog.LastRevision.Translator != "" {
-			fmt.Fprint(w, "\"Last-Translator: \"\n")
+			_, _ = fmt.Fprint(w, "\"Last-Translator: \"\n")
 		}
 	} else {
 		if catalog.LastRevision.Translator != "" {
-			fmt.Fprintf(w, "\"Last-Translator: %s\"\n", catalog.LastRevision.Translator)
+			_, _ = fmt.Fprintf(w, "\"Last-Translator: %s\"\n", catalog.LastRevision.Translator)
 		}
 	}
 	if catalog.BugsReportEmail != "" {
-		fmt.Fprintf(w, "\"Report-Msgid-Bugs-To: <%s>\"\n", catalog.BugsReportEmail)
+		_, _ = fmt.Fprintf(w, "\"Report-Msgid-Bugs-To: <%s>\"\n", catalog.BugsReportEmail)
 	}
 	if template {
-		fmt.Fprint(w, "\"Language: \\n\"\n")
+		_, _ = fmt.Fprint(w, "\"Language: \\n\"\n")
 	} else {
-		fmt.Fprintf(w, "\"Language: %s\\n\"\n", locale)
+		_, _ = fmt.Fprintf(w, "\"Language: %s\\n\"\n", locale)
 	}
-	fmt.Fprintln(w, "\"MIME-Version: 1.0\\n\"")
-	fmt.Fprintln(w, "\"Content-Type: text/plain; charset=UTF-8\\n\"")
-	fmt.Fprintln(w, "\"Content-Transfer-Encoding: 8bit\\n\"")
-	fmt.Fprintf(w, "\"Plural-Forms: %s\\n\"\n", pluralform.ByTag(locale).GettextFormula)
-	fmt.Fprint(w, "\"X-Generator: "+
+	_, _ = fmt.Fprintln(w, "\"MIME-Version: 1.0\\n\"")
+	_, _ = fmt.Fprintln(w, "\"Content-Type: text/plain; charset=UTF-8\\n\"")
+	_, _ = fmt.Fprintln(w, "\"Content-Transfer-Encoding: 8bit\\n\"")
+	_, _ = fmt.Fprintf(w, "\"Plural-Forms: %s\\n\"\n", pluralform.ByTag(locale).GettextFormula)
+	_, _ = fmt.Fprint(w, "\"X-Generator: "+
 		"https://github.com/romshark/localize/cmd/localize\\n\"\n\n")
 
 	for msg, meta := range catalog.Ordered() {
 		for _, p := range meta.Pos {
-			fmt.Fprintf(w, "#: %s:%d:%d\n", p.Filename, p.Line, p.Column)
+			_, _ = fmt.Fprintf(w, "#: %s:%d:%d\n", p.Filename, p.Line, p.Column)
 		}
 
 		if msg.Description != "" {
 			for l := range iterateLines(msg.Description) {
-				fmt.Fprintf(w, "#. %s\n", l)
+				_, _ = fmt.Fprintf(w, "#. %s\n", l)
 			}
 		}
 
-		fmt.Fprintf(w, "msgctxt %q\n", msg.Hash)
-		fmt.Fprintf(w, "msgid %q\n", msg.Other)
+		_, _ = fmt.Fprintf(w, "msgctxt %q\n", msg.Hash)
+		_, _ = fmt.Fprintf(w, "msgid %q\n", msg.Other)
 
 		switch msg.FuncType {
 		case codeparser.FuncTypePlural, codeparser.FuncTypePluralBlock:
-			fmt.Fprintf(w, "msgid_plural %q\n", msg.Other)
+			_, _ = fmt.Fprintf(w, "msgid_plural %q\n", msg.Other)
 			for i, f := range pluralForms.Forms {
 				var txt string
 				switch f {
@@ -92,20 +92,20 @@ func WriteCatalog(
 					panic("unknown case: %q")
 				}
 				if template {
-					fmt.Fprintf(w, "msgstr[%d] \"\"\n", i)
+					_, _ = fmt.Fprintf(w, "msgstr[%d] \"\"\n", i)
 				} else {
-					fmt.Fprintf(w, "msgstr[%d] %q\n", i, txt)
+					_, _ = fmt.Fprintf(w, "msgstr[%d] %q\n", i, txt)
 				}
 			}
 		default:
 			// Other
 			if template {
-				fmt.Fprintf(w, "msgstr \"\"\n")
+				_, _ = fmt.Fprintf(w, "msgstr \"\"\n")
 			} else {
-				fmt.Fprintf(w, "msgstr %q\n", msg.Other)
+				_, _ = fmt.Fprintf(w, "msgstr %q\n", msg.Other)
 			}
 		}
-		fmt.Fprintln(w)
+		_, _ = fmt.Fprintln(w)
 	}
 }
 

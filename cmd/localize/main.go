@@ -133,14 +133,14 @@ func runGenerate(osArgs []string) error {
 	timeTotal := time.Since(start)
 	if !conf.QuietMode {
 		w := os.Stderr
-		fmt.Fprintf(w, "Text/Block: %d/%d\n",
+		_, _ = fmt.Fprintf(w, "Text/Block: %d/%d\n",
 			stats.TextTotal.Load(), stats.BlockTotal.Load())
-		fmt.Fprintf(w, "Plural/PluralBlock: %d/%d\n",
+		_, _ = fmt.Fprintf(w, "Plural/PluralBlock: %d/%d\n",
 			stats.PluralTotal.Load(), stats.PluralBlockTotal.Load())
-		fmt.Fprintf(w, "Ordinal: %d\n", stats.OrdinalTotal.Load())
-		fmt.Fprintf(w, "Calls merged: %d\n", stats.Merges.Load())
-		fmt.Fprintf(w, "files scanned: %d\n", stats.FilesTraversed.Load())
-		fmt.Fprintf(w, "time total: %s\n", timeTotal.String())
+		_, _ = fmt.Fprintf(w, "Ordinal: %d\n", stats.OrdinalTotal.Load())
+		_, _ = fmt.Fprintf(w, "Calls merged: %d\n", stats.Merges.Load())
+		_, _ = fmt.Fprintf(w, "files scanned: %d\n", stats.FilesTraversed.Load())
+		_, _ = fmt.Fprintf(w, "time total: %s\n", timeTotal.String())
 	}
 
 	return nil
