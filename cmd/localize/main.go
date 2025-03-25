@@ -120,9 +120,6 @@ func runGenerate(osArgs []string) error {
 		}
 
 		// Format and write to file.
-		fmt.Println("----------------------")
-		fmt.Println(buf.String())
-		fmt.Println("----------------------")
 		formatted, err := format.Source(buf.Bytes(), format.Options{})
 		if err != nil {
 			return fmt.Errorf("formatting generated Go bundle code: %w", err)
