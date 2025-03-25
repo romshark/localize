@@ -1,0 +1,88 @@
+msgid ""
+msgstr ""
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1\n"
+"X-Generator: https://github.com/romshark/localize/cmd/localize\n"
+
+#: /main.go:28:14
+#. A multi-line example.
+msgctxt "169d69ec01474328"
+msgid "simple"
+msgstr ""
+
+#: /main.go:30:14
+#. A multi-line example.
+msgctxt "169d69ec01474328"
+msgid "this is a\nmultiline string example!"
+msgstr ""
+
+#: /main.go:31:14
+#. A multi-line example.
+msgctxt "169d69ec01474328"
+msgid ""
+"this is a "
+"multiline translation example!"
+msgstr ""
+
+#: /subpack/subpack.go:16:2
+msgctxt "2c026306428d18de"
+msgid "Message from subpack package"
+msgstr ""
+
+#: /subpack/subpack.go:26:2
+#. This message keeps repeating
+msgctxt "45d4fd9ba1e726c7"
+msgid "Repeating message"
+msgstr ""
+
+#: /main.go:41:2
+#. Number of unread messages the user has.
+msgctxt "4aebacda77c9f54f"
+msgid "You have %d unread messages"
+msgid_plural "You have %d unread messages"
+msgstr[0] ""
+msgstr[1] ""
+
+#: /subpack/subpack.go:29:2
+#. However, this message has a different comment, hence it's different!
+msgctxt "5f885c696b571c92"
+msgid "Repeating message"
+msgstr ""
+
+#: /subpack/subpack.go:17:14
+#. First subpack localization
+msgctxt "a44cdc4926cb5201"
+msgid "Pluralized %d message from subpack package"
+msgid_plural "Pluralized %d message from subpack package"
+msgstr[0] ""
+msgstr[1] ""
+
+#: /main.go:25:14
+#. First welcoming message.
+#. Second line of comment!
+msgctxt "bfef117d8ff12c5a"
+msgid "Welcome!"
+msgstr ""
+
+#: /main.go:48:2
+#. Number of unread messages the user has
+#. and whether he's fine with this!
+msgctxt "d9974a2b47bff31"
+msgid "You have %d unread messages\nand you're fine with this?!"
+msgid_plural "You have %d unread messages\nand you're fine with this?!"
+msgstr[0] ""
+msgstr[1] ""
+
+#: /subpack/subpack.go:23:2
+#. This message keeps repeating
+msgctxt "e23cbd852979f96e"
+msgid "CONSTANT_VALUE"
+msgstr ""
+
+#: /main.go:35:3
+#. Politely asking for the user's mood.
+msgctxt "e8de4f2e7f985e83"
+msgid "How are you today?"
+msgstr ""

@@ -1,0 +1,27 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) 2025 Example Corp
+# This file is distributed under the same license as the example package.
+# FIRST AUTHOR <email@example.com>, 2025.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: example 1.0\n"
+"Report-Msgid-Bugs-To: bugs@example.com\n"
+"POT-Creation-Date: 2025-03-24 12:34+0000\n"
+"PO-Revision-Date: 2025-03-24 12:35+0000\n"
+"Last-Translator: Translator Name <translator@example.com>\n"
+"Language-Team: Example Team <team@example.com>\n"
+"Language: en\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: CustomTool 1.0\n"
+
+#. Extracted comment: This is used on the home screen
+#: src/ui/home.c:15 src/ui/home.c:28
+#, c-format
+msgctxt "Home screen"
+msgid "Welcome, %s!"
+msgstr "Welcome, %s!"
