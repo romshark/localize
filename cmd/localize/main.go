@@ -110,14 +110,19 @@ func runGenerate(osArgs []string) error {
 			return fmt.Errorf("opening Go bundle output file: %w", err)
 		}
 		var buf bytes.Buffer
+
+		pkgName := filepath.Base(conf.BundlePkgPath)
 		err = gengo.Write(
-			&buf, conf.Locale, catalog.CopyrightNotice, conf.BundlePkgPath, catalog,
+			&buf, conf.Locale, catalog.CopyrightNotice, pkgName, catalog,
 		)
 		if err != nil {
 			return fmt.Errorf("generating Go bundle: %w", err)
 		}
 
 		// Format and write to file.
+		fmt.Println("----------------------")
+		fmt.Println(buf.String())
+		fmt.Println("----------------------")
 		formatted, err := format.Source(buf.Bytes(), format.Options{})
 		if err != nil {
 			return fmt.Errorf("formatting generated Go bundle code: %w", err)

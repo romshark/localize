@@ -13,8 +13,9 @@ func TestExtract(t *testing.T) {
 	_ = s
 
 	outDir := t.TempDir()
+	bundleDir := filepath.Join(outDir, "localizebundle")
 
-	err := run([]string{"extract", "-o", outDir})
+	err := run([]string{"extract", "generate", "-b", bundleDir, "-l", "en"})
 	require.NoError(t, err)
 }
 
