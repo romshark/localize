@@ -56,7 +56,7 @@ type CatalogRevision struct {
 
 // Catalog is a collection of messages that can be marshaled into a .po gettext file.
 type Catalog struct {
-	CopyrightNotice string          // Optional
+	HeadComment     string          // Optional
 	BugsReportEmail string          // Optional
 	LastRevision    CatalogRevision // Optional
 	Locale          language.Tag
@@ -96,10 +96,10 @@ func (c *Catalog) MakePO() gettext.FilePO {
 		Value: pluralForms.GettextPluralForms,
 	}
 
-	if c.CopyrightNotice != "" {
+	if c.HeadComment != "" {
 		h.HeadComments.Text = append(h.HeadComments.Text, gettext.Comment{
 			Type:  gettext.CommentTypeTranslator,
-			Value: c.CopyrightNotice,
+			Value: c.HeadComment,
 		})
 	}
 
@@ -276,8 +276,11 @@ type ErrorSrc struct {
 	Err error
 }
 
-func Parse(pathPattern string, locale language.Tag, trimpath, quiet, verbose bool) (
-	catalog *Catalog, stats *Statistics,
+func Parse(
+	pathPattern, bundlePkg string,
+	locale language.Tag, trimpath, quiet, verbose bool,
+) (
+	catalog *Catalog, bundle *Bundle, stats *Statistics,
 	srcErrs []ErrorSrc, err error,
 ) {
 	fileset := token.NewFileSet()
@@ -289,7 +292,7 @@ func Parse(pathPattern string, locale language.Tag, trimpath, quiet, verbose boo
 		base, _ := locale.Base()
 		pluralForms, ok = cldr.ByBase(base)
 		if !ok {
-			return catalog, stats, srcErrs, fmt.Errorf(
+			return catalog, bundle, stats, srcErrs, fmt.Errorf(
 				"%w: %v", ErrUnsupportedLocale, locale,
 			)
 		}
@@ -300,12 +303,14 @@ func Parse(pathPattern string, locale language.Tag, trimpath, quiet, verbose boo
 			packages.NeedSyntax |
 			packages.NeedTypes |
 			packages.NeedTypesInfo |
-			packages.NeedDeps,
+			packages.NeedDeps |
+			packages.NeedName |
+			packages.NeedModule,
 		Fset: fileset,
 	}
 	pkgs, err := packages.Load(cfg, pathPattern+"/...")
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("loading packages: %w", err)
+		return nil, nil, nil, nil, fmt.Errorf("loading packages: %w", err)
 	}
 
 	catalog = &Catalog{
@@ -313,7 +318,19 @@ func Parse(pathPattern string, locale language.Tag, trimpath, quiet, verbose boo
 		Locale:   locale,
 	}
 
+	fmt.Println(bundlePkg)
+
 	for _, pkg := range pkgs {
+		if isPkgLocalizeBundle(bundlePkg, pkg) {
+			bundle, err := ParseBundle(pkg)
+			if err != nil {
+				return catalog, nil, stats, nil, fmt.Errorf(
+					"parsing bundle: %w", err,
+				)
+			}
+			fmt.Println("BUNDLE", bundle)
+		}
+
 		for _, file := range pkg.Syntax {
 			stats.FilesTraversed.Add(1)
 			for _, decl := range file.Decls {
@@ -463,7 +480,16 @@ func Parse(pathPattern string, locale language.Tag, trimpath, quiet, verbose boo
 		}
 	}
 
-	return catalog, stats, srcErrs, nil
+	return catalog, bundle, stats, srcErrs, nil
+}
+
+func isPkgLocalizeBundle(bundlePkg string, pkg *packages.Package) bool {
+	if c, ok := strings.CutPrefix(pkg.Dir, pkg.Module.Dir); ok {
+		if len(c) > 1 && c[0] == '/' && strings.HasSuffix(c[1:], bundlePkg) {
+			return true
+		}
+	}
+	return false
 }
 
 func extractComments(group *ast.CommentGroup) (lines []string) {

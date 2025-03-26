@@ -16,7 +16,7 @@ import (
 var templateGotmpl string
 
 func Write(
-	w io.Writer, sourceLocale language.Tag, copyrightNotice string,
+	w io.Writer, sourceLocale language.Tag, headComment string,
 	packageName string, catalogs ...*codeparser.Catalog,
 ) error {
 	tmpl, err := template.New("gen").Parse(templateGotmpl)
@@ -65,13 +65,15 @@ func Write(
 		}
 	}
 	return tmpl.Execute(w, struct {
-		CopyrightNotice  string
+		HeadComment      string
 		GeneratorVersion string
+		BundleVersion    string
 		Package          string
 		Catalogs         []catalogInfo
 	}{
-		CopyrightNotice:  copyrightNotice,
+		HeadComment:      headComment,
 		GeneratorVersion: "1",
+		BundleVersion:    "1",
 		Package:          packageName,
 		Catalogs:         catInfo,
 	})

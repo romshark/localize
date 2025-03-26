@@ -61,13 +61,15 @@ func runGenerate(osArgs []string) error {
 
 	poEncoder := gettext.Encoder{}
 
-	catalog, stats, srcErrs, err := codeparser.Parse(
-		conf.SrcPathPattern, conf.Locale,
+	catalog, bundle, stats, srcErrs, err := codeparser.Parse(
+		conf.SrcPathPattern, conf.BundlePkgPath, conf.Locale,
 		conf.TrimPath, conf.QuietMode, conf.VerboseMode,
 	)
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrAnalyzingSource, err)
 	}
+
+	_ = bundle // TODO
 
 	if len(srcErrs) > 0 {
 		// Print source errors to console.
@@ -135,7 +137,7 @@ func runGenerate(osArgs []string) error {
 
 		pkgName := filepath.Base(conf.BundlePkgPath)
 		err = gengo.Write(
-			&buf, conf.Locale, catalog.CopyrightNotice, pkgName, catalog,
+			&buf, conf.Locale, catalog.HeadComment, pkgName, catalog,
 		)
 		if err != nil {
 			return fmt.Errorf("generating Go bundle: %w", err)
