@@ -19,7 +19,6 @@ func Write(
 	w io.Writer, sourceLocale language.Tag, copyrightNotice string,
 	packageName string, catalogs ...*codeparser.Catalog,
 ) error {
-	fmt.Println("PACKAGE NAME", packageName)
 	tmpl, err := template.New("gen").Parse(templateGotmpl)
 	if err != nil {
 		return fmt.Errorf("rendering template: %w", err)
