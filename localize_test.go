@@ -15,7 +15,6 @@ type MockReader struct {
 	tag      language.Tag
 	static   map[string]string
 	cardinal map[string]MockReaderPlural
-	ordinal  func(n any) string
 }
 
 var _ localize.Reader = MockReader{}
@@ -43,7 +42,6 @@ func (r MockReader) Plural(templates localize.Forms, quantity any) string {
 	_ = r.tag
 	_ = r.static
 	_ = r.cardinal
-	_ = r.ordinal
 	return ""
 	// p := r.cardinal[templates]
 	// switch quantity {

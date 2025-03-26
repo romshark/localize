@@ -78,9 +78,6 @@ func main() {
 	// description: This is a plural translation in cardinal form.
 	l.Cardinal("You achieved %d rank", 0)
 
-	// description: This is a plural translation in ordinal form.
-	// one: "You have %d unread email"
-	l.Ordinal("You have %d unread emails", 1)
 	subpack.Foo(localization)
 }
 `,

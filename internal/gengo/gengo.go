@@ -60,8 +60,6 @@ func Write(
 				catInfo[i].MessagesStatic = append(catInfo[i].MessagesStatic, m.Other)
 			case codeparser.FuncTypePlural, codeparser.FuncTypePluralBlock:
 				catInfo[i].MessagesPlural = append(catInfo[i].MessagesPlural, m)
-			case codeparser.FuncTypeOrdinal:
-				// Ignore.
 			default:
 				panic("normally unreachable")
 			}

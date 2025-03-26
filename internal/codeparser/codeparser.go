@@ -37,7 +37,6 @@ const (
 	FuncTypeBlock       = "Block"
 	FuncTypePlural      = "Plural"
 	FuncTypePluralBlock = "PluralBlock"
-	FuncTypeOrdinal     = "Ordinal"
 )
 
 type Statistics struct {
@@ -45,7 +44,6 @@ type Statistics struct {
 	BlockTotal       atomic.Int64
 	PluralTotal      atomic.Int64
 	PluralBlockTotal atomic.Int64
-	OrdinalTotal     atomic.Int64
 	Merges           atomic.Int64
 	FilesTraversed   atomic.Int64
 }
@@ -202,9 +200,6 @@ func Parse(pathPattern string, locale language.Tag, trimpath, quiet, verbose boo
 						stats.PluralTotal.Add(1)
 					case FuncTypePluralBlock:
 						stats.PluralBlockTotal.Add(1)
-					case FuncTypeOrdinal:
-						stats.OrdinalTotal.Add(1)
-						return true // Doesn't require further processing.
 					default:
 						return true // Not the right methods.
 					}

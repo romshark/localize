@@ -137,7 +137,6 @@ func runGenerate(osArgs []string) error {
 			stats.TextTotal.Load(), stats.BlockTotal.Load())
 		_, _ = fmt.Fprintf(w, "Plural/PluralBlock: %d/%d\n",
 			stats.PluralTotal.Load(), stats.PluralBlockTotal.Load())
-		_, _ = fmt.Fprintf(w, "Ordinal: %d\n", stats.OrdinalTotal.Load())
 		_, _ = fmt.Fprintf(w, "Calls merged: %d\n", stats.Merges.Load())
 		_, _ = fmt.Fprintf(w, "files scanned: %d\n", stats.FilesTraversed.Load())
 		_, _ = fmt.Fprintf(w, "time total: %s\n", timeTotal.String())
