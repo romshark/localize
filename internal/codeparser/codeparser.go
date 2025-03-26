@@ -22,6 +22,7 @@ import (
 
 	"github.com/cespare/xxhash"
 	"github.com/romshark/localize"
+	"github.com/romshark/localize/gettext"
 	"github.com/romshark/localize/internal/cldr"
 	"github.com/romshark/localize/internal/fmtplaceholder"
 	"github.com/romshark/localize/internal/strfmt"
@@ -60,6 +61,154 @@ type Catalog struct {
 	LastRevision    CatalogRevision // Optional
 	Locale          language.Tag
 	Messages        map[Msg]MsgMeta
+}
+
+func (c *Catalog) MakePO() gettext.FilePO {
+	var h gettext.FileHead
+	if c.BugsReportEmail != "" {
+		h.ReportMsgidBugsTo = gettext.Header{Value: c.BugsReportEmail}
+	}
+	if c.LastRevision.Translator != "" {
+		h.LastTranslator = gettext.Header{Value: c.LastRevision.Translator}
+	}
+	if !c.LastRevision.DateTime.IsZero() {
+		h.PORevisionDate = gettext.Header{
+			Value: c.LastRevision.DateTime.Format("2006-01-02 15:04Z07:00"),
+		}
+	}
+	h.Language = gettext.HeaderLanguage{
+		Header: gettext.Header{Value: c.Locale.String()},
+		Locale: c.Locale,
+	}
+	h.MIMEVersion = gettext.Header{Value: "1.0"}
+	h.ContentType = gettext.Header{Value: "text/plain; charset=UTF-8"}
+	h.ContentTransferEncoding = gettext.Header{Value: "8bit"}
+
+	pluralForms, ok := cldr.ByTag(c.Locale)
+	if !ok {
+		base, _ := c.Locale.Base()
+		pluralForms, ok = cldr.ByBase(base)
+		if !ok {
+			panic(fmt.Errorf("unsupported locale: %v", c.Locale))
+		}
+	}
+	h.PluralForms = gettext.Header{
+		Value: pluralForms.GettextPluralForms,
+	}
+
+	if c.CopyrightNotice != "" {
+		h.HeadComments.Text = append(h.HeadComments.Text, gettext.Comment{
+			Type:  gettext.CommentTypeTranslator,
+			Value: c.CopyrightNotice,
+		})
+	}
+
+	var m gettext.Messages
+	m.List = make([]gettext.Message, 0, len(c.Messages))
+	for msg, meta := range c.Messages {
+		var comments gettext.Comments
+		for _, pos := range meta.Pos {
+			comments.Text = append(comments.Text, gettext.Comment{
+				Type:  gettext.CommentTypeReference,
+				Value: fmt.Sprintf("%s:%d", pos.Filename, pos.Line),
+			})
+		}
+		if msg.Description != "" {
+			comments.Text = append(comments.Text, gettext.Comment{
+				Type:  gettext.CommentTypeExtracted,
+				Value: msg.Description,
+			})
+		}
+		gm := gettext.Message{
+			Msgctxt: gettext.Msgctxt{
+				Comments: comments,
+				Text: gettext.StringLiterals{
+					Lines: []gettext.StringLiteral{{Value: msg.Hash}},
+				},
+			},
+		}
+
+		switch msg.FuncType {
+		case FuncTypePlural, FuncTypePluralBlock:
+			// Plural
+			gm.Msgid = gettext.Msgid{
+				Text: gettext.StringLiterals{
+					Lines: []gettext.StringLiteral{{Value: msg.One}},
+				},
+			}
+			gm.MsgidPlural = gettext.MsgidPlural{
+				Text: gettext.StringLiterals{
+					Lines: []gettext.StringLiteral{{Value: msg.Other}},
+				},
+			}
+			for i, f := range pluralForms.CardinalForms {
+				addText := func(index int, text gettext.StringLiterals) {
+					switch index {
+					case 0:
+						gm.Msgstr0.Text = text
+					case 1:
+						gm.Msgstr1.Text = text
+					case 2:
+						gm.Msgstr2.Text = text
+					case 3:
+						gm.Msgstr3.Text = text
+					case 4:
+						gm.Msgstr4.Text = text
+					case 5:
+						gm.Msgstr5.Text = text
+					}
+				}
+
+				switch f {
+				case cldr.CLDRPluralFormZero:
+					addText(i, gettext.StringLiterals{
+						Lines: []gettext.StringLiteral{{Value: msg.Zero}},
+					})
+				case cldr.CLDRPluralFormOne:
+					addText(i, gettext.StringLiterals{
+						Lines: []gettext.StringLiteral{{Value: msg.One}},
+					})
+				case cldr.CLDRPluralFormTwo:
+					addText(i, gettext.StringLiterals{
+						Lines: []gettext.StringLiteral{{Value: msg.Two}},
+					})
+				case cldr.CLDRPluralFormFew:
+					addText(i, gettext.StringLiterals{
+						Lines: []gettext.StringLiteral{{Value: msg.Few}},
+					})
+				case cldr.CLDRPluralFormMany:
+					addText(i, gettext.StringLiterals{
+						Lines: []gettext.StringLiteral{{Value: msg.Many}},
+					})
+				case cldr.CLDRPluralFormOther:
+					addText(i, gettext.StringLiterals{
+						Lines: []gettext.StringLiteral{{Value: msg.Other}},
+					})
+				}
+			}
+		default:
+			// Regular
+			gm.Msgid = gettext.Msgid{
+				Text: gettext.StringLiterals{
+					Lines: []gettext.StringLiteral{{Value: msg.Other}},
+				},
+			}
+			gm.Msgstr = gettext.Msgstr{
+				Text: gettext.StringLiterals{
+					Lines: []gettext.StringLiteral{{Value: msg.Other}},
+				},
+			}
+		}
+
+		m.List = append(m.List, gm)
+	}
+
+	return gettext.FilePO{
+		File: &gettext.File{
+			Head:     h,
+			Messages: m,
+		},
+	}
 }
 
 // Ordered returns an iterator over all messages ordered by hash.

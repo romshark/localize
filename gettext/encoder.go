@@ -304,16 +304,6 @@ func (e Encoder) encode(f *File, w io.Writer) error {
 func (e *Encoder) encodeComments(w io.Writer, c Comments) error {
 	for _, c := range c.Text {
 		switch c.Type {
-		case CommentTypeTranslator:
-			if c.Value == "" {
-				if _, err := fmt.Fprintln(w, "#"); err != nil {
-					return err
-				}
-				continue
-			}
-			if err := printLines(w, "# ", c.Value); err != nil {
-				return err
-			}
 		case CommentTypeExtracted:
 			if err := printLines(w, "#. ", c.Value); err != nil {
 				return err
@@ -327,7 +317,16 @@ func (e *Encoder) encodeComments(w io.Writer, c Comments) error {
 				return err
 			}
 		default:
-			return nil
+			// Treat everything else as translator comment
+			if c.Value == "" {
+				if _, err := fmt.Fprintln(w, "#"); err != nil {
+					return err
+				}
+				continue
+			}
+			if err := printLines(w, "# ", c.Value); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

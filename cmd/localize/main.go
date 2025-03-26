@@ -10,9 +10,9 @@ import (
 	"slices"
 	"time"
 
+	"github.com/romshark/localize/gettext"
 	"github.com/romshark/localize/internal/codeparser"
 	"github.com/romshark/localize/internal/gengo"
-	"github.com/romshark/localize/internal/writepo"
 	"golang.org/x/text/language"
 	"mvdan.cc/gofumpt/format"
 )
@@ -59,6 +59,8 @@ func runGenerate(osArgs []string) error {
 
 	start := time.Now()
 
+	poEncoder := gettext.Encoder{}
+
 	catalog, stats, srcErrs, err := codeparser.Parse(
 		conf.SrcPathPattern, conf.Locale,
 		conf.TrimPath, conf.QuietMode, conf.VerboseMode,
@@ -86,18 +88,30 @@ func runGenerate(osArgs []string) error {
 		if err != nil {
 			return fmt.Errorf("opening output file: %v", err)
 		}
-		writepo.WriteCatalog(f, conf.Locale, catalog, false)
+		po := catalog.MakePO()
+		// Add do not edit head comment.
+		po.Head.HeadComments.Text = append(po.Head.HeadComments.Text,
+			gettext.Comment{Value: "AUTOMATICALLY GENERATED FILE. DO NOT EDIT."},
+			gettext.Comment{Value: ""},
+			gettext.Comment{Value: "Any changes made to this file will be overwritten"},
+			gettext.Comment{Value: "as soon as localize is executed again."})
+		if err := poEncoder.EncodePO(po, f); err != nil {
+			return fmt.Errorf("encoding PO file: %w", err)
+		}
 	}
 
-	// Write translation template file.
-	{
+	{ // Write translation template file.
 		f, err := os.OpenFile(
 			conf.OutPathCatalogTemplate, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644,
 		)
 		if err != nil {
 			return fmt.Errorf("opening file: %v", err)
 		}
-		writepo.WriteCatalog(f, conf.Locale, catalog, true)
+		po := catalog.MakePO()
+		pot := po.MakePOT()
+		if err := poEncoder.EncodePOT(pot, f); err != nil {
+			return fmt.Errorf("encoding POT file: %w", err)
+		}
 	}
 
 	{ // Generate Go code
