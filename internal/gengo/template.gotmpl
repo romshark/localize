@@ -76,17 +76,17 @@ var {{ .TypeNameUnexported }}Plural = map[string]localize.Forms {
 {{ end }}
 
 
-// {{ .TypeName }} is a localized reader implementation for locale "{{ printf "%q" .LocaleTag.String }}".
+// {{ .TypeName }} is a localized reader implementation for locale {{ printf "%q" .LocaleTag.String }}.
 type {{ .TypeName }} struct{}
 
 var _ localize.Reader = new({{ .TypeName }})
 
 // Locale provides the locale this reader localizes for.
-// Always returns the locale "{{ printf "%q" .LocaleTag.String }}".
+// Always returns the locale {{ printf "%q" .LocaleTag.String }}.
 func (r {{ .TypeName }}) Locale() language.Tag { return {{ .TypeNameUnexported }}Tag }
 
 // Base provides the base language this reader localizes for.
-// Always returns the base language of locale "{{ printf "%q" .LocaleTag.String }}".
+// Always returns the base language of locale {{ printf "%q" .LocaleTag.String }}.
 func (r {{ .TypeName }}) Base() language.Base { return {{ .TypeNameUnexported }}Base }
 
 // Text provides static 1-to-1 translations.
