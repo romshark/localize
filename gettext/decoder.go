@@ -498,7 +498,7 @@ LOOP:
 			case statementTypeMsgstr:
 				return m, p.errSyntax("msgctxt or msgid")
 			case statementTypeMsgidPlural, statementTypeMsgstrIndexed:
-				var msg *MsgidStr
+				var msg *Msgstr
 				switch stmt.pluralFormIndex {
 				case 0:
 					msg = &m.Msgstr0

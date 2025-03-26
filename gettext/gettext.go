@@ -30,13 +30,13 @@ type Message struct {
 	Msgctxt     Msgctxt
 	Msgid       Msgid
 	MsgidPlural MsgidPlural
-	Msgstr      MsgidStr
-	Msgstr0     MsgidStr
-	Msgstr1     MsgidStr
-	Msgstr2     MsgidStr
-	Msgstr3     MsgidStr
-	Msgstr4     MsgidStr
-	Msgstr5     MsgidStr
+	Msgstr      Msgstr
+	Msgstr0     Msgstr
+	Msgstr1     Msgstr
+	Msgstr2     Msgstr
+	Msgstr3     Msgstr
+	Msgstr4     Msgstr
+	Msgstr5     Msgstr
 }
 
 // Clone returns a deep copy of m.
@@ -83,7 +83,7 @@ type MsgidPlural struct {
 	Text     StringLiterals
 }
 
-type MsgidStr struct {
+type Msgstr struct {
 	Span
 	Comments Comments
 	Text     StringLiterals
