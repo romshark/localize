@@ -22,8 +22,8 @@ import (
 
 	"github.com/cespare/xxhash"
 	"github.com/romshark/localize"
+	"github.com/romshark/localize/internal/cldr"
 	"github.com/romshark/localize/internal/fmtplaceholder"
-	"github.com/romshark/localize/internal/pluralform"
 	"github.com/romshark/localize/internal/strfmt"
 	"golang.org/x/text/language"
 	"golang.org/x/tools/go/packages"
@@ -119,6 +119,7 @@ var (
 	ErrWrongPlaceholderVerb = errors.New(
 		"wrong placeholder verb, use a numeric placeholder",
 	)
+	ErrUnsupportedLocale = errors.New("unsupported locale")
 )
 
 type ErrorSrc struct {
@@ -133,7 +134,17 @@ func Parse(pathPattern string, locale language.Tag, trimpath, quiet, verbose boo
 	fileset := token.NewFileSet()
 	stats = new(Statistics)
 
-	pluralForms := pluralform.ByTag(locale)
+	pluralForms, ok := cldr.ByTag(locale)
+	if !ok {
+		// Fallback to base language if necessary.
+		base, _ := locale.Base()
+		pluralForms, ok = cldr.ByBase(base)
+		if !ok {
+			return catalog, stats, srcErrs, fmt.Errorf(
+				"%w: %v", ErrUnsupportedLocale, locale,
+			)
+		}
+	}
 
 	cfg := &packages.Config{
 		Mode: packages.NeedFiles |
@@ -452,7 +463,7 @@ func mustFmtTemplate(funcType string, templateText string) string {
 
 func validateForms(
 	errs *[]ErrorSrc, locale language.Tag, pos token.Position,
-	pluralForms pluralform.PluralForms, msg Msg,
+	pluralForms cldr.PluralForms, msg Msg,
 ) {
 	// TODO returns the correct line:column for the particular line the error was
 	// detected at since currently it's the pos of the call.
@@ -464,13 +475,13 @@ func validateForms(
 	}
 	validatePluralTemplate(errs, pos, msg.Other)
 
-	if pluralForms.Zero && msg.Zero == "" {
+	if pluralForms.Cardinal.Zero && msg.Zero == "" {
 		appendSrcErr(errs, pos, fmt.Errorf(
 			"%w: locale %q requires plural form Zero",
 			ErrMissingPluralForm, locale.String(),
 		))
 	}
-	if !pluralForms.Zero && msg.Zero != "" {
+	if !pluralForms.Cardinal.Zero && msg.Zero != "" {
 		appendSrcErr(errs, pos, fmt.Errorf(
 			"%w: locale %q doesn't support plural form Zero",
 			ErrUnsupportedPluralForm, locale.String(),
@@ -480,13 +491,13 @@ func validateForms(
 		validatePluralTemplate(errs, pos, msg.Zero)
 	}
 
-	if pluralForms.One && msg.One == "" {
+	if pluralForms.Cardinal.One && msg.One == "" {
 		appendSrcErr(errs, pos, fmt.Errorf(
 			"%w: locale %q requires plural form One",
 			ErrMissingPluralForm, locale.String(),
 		))
 	}
-	if !pluralForms.One && msg.One != "" {
+	if !pluralForms.Cardinal.One && msg.One != "" {
 		appendSrcErr(errs, pos, fmt.Errorf(
 			"%w: locale %q doesn't support plural form One",
 			ErrUnsupportedPluralForm, locale.String(),
@@ -496,13 +507,13 @@ func validateForms(
 		validatePluralTemplate(errs, pos, msg.One)
 	}
 
-	if pluralForms.Two && msg.Two == "" {
+	if pluralForms.Cardinal.Two && msg.Two == "" {
 		appendSrcErr(errs, pos, fmt.Errorf(
 			"%w: locale %q requires plural form Two",
 			ErrMissingPluralForm, locale.String(),
 		))
 	}
-	if !pluralForms.Two && msg.Two != "" {
+	if !pluralForms.Cardinal.Two && msg.Two != "" {
 		appendSrcErr(errs, pos, fmt.Errorf(
 			"%w: locale %q doesn't support plural form Two",
 			ErrUnsupportedPluralForm, locale.String(),
@@ -512,13 +523,13 @@ func validateForms(
 		validatePluralTemplate(errs, pos, msg.Two)
 	}
 
-	if pluralForms.Few && msg.Few == "" {
+	if pluralForms.Cardinal.Few && msg.Few == "" {
 		appendSrcErr(errs, pos, fmt.Errorf(
 			"%w: locale %q requires plural form Few",
 			ErrMissingPluralForm, locale.String(),
 		))
 	}
-	if !pluralForms.Few && msg.Few != "" {
+	if !pluralForms.Cardinal.Few && msg.Few != "" {
 		appendSrcErr(errs, pos, fmt.Errorf(
 			"%w: locale %q doesn't support plural form Few",
 			ErrUnsupportedPluralForm, locale.String(),
@@ -528,13 +539,13 @@ func validateForms(
 		validatePluralTemplate(errs, pos, msg.Few)
 	}
 
-	if pluralForms.Many && msg.Many == "" {
+	if pluralForms.Cardinal.Many && msg.Many == "" {
 		appendSrcErr(errs, pos, fmt.Errorf(
 			"%w: locale %q requires plural form Many",
 			ErrMissingPluralForm, locale.String(),
 		))
 	}
-	if !pluralForms.Many && msg.Many != "" {
+	if !pluralForms.Cardinal.Many && msg.Many != "" {
 		appendSrcErr(errs, pos, fmt.Errorf(
 			"%w: locale %q doesn't support plural form Many",
 			ErrUnsupportedPluralForm, locale.String(),

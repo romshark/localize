@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/romshark/localize/internal/cldr"
 	"github.com/romshark/localize/internal/codeparser"
-	"github.com/romshark/localize/internal/pluralform"
 	"golang.org/x/text/language"
 )
 
@@ -18,7 +18,13 @@ import (
 func WriteCatalog(
 	w io.Writer, locale language.Tag, catalog *codeparser.Catalog, template bool,
 ) {
-	pluralForms := pluralform.ByTag(locale)
+	pluralForms, ok := cldr.ByTag(locale)
+	if !ok {
+		pluralForms, ok = cldr.ByTag(locale)
+		if !ok {
+			panic(fmt.Errorf("unsupported locale: %v", locale))
+		}
+	}
 
 	// Header
 	if catalog.CopyrightNotice != "" {
@@ -52,7 +58,7 @@ func WriteCatalog(
 	_, _ = fmt.Fprintln(w, "\"MIME-Version: 1.0\\n\"")
 	_, _ = fmt.Fprintln(w, "\"Content-Type: text/plain; charset=UTF-8\\n\"")
 	_, _ = fmt.Fprintln(w, "\"Content-Transfer-Encoding: 8bit\\n\"")
-	_, _ = fmt.Fprintf(w, "\"Plural-Forms: %s\\n\"\n", pluralform.ByTag(locale).GettextFormula)
+	_, _ = fmt.Fprintf(w, "\"Plural-Forms: %s\\n\"\n", pluralForms.GettextFormula)
 	_, _ = fmt.Fprint(w, "\"X-Generator: "+
 		"https://github.com/romshark/localize/cmd/localize\\n\"\n\n")
 
@@ -73,20 +79,20 @@ func WriteCatalog(
 		switch msg.FuncType {
 		case codeparser.FuncTypePlural, codeparser.FuncTypePluralBlock:
 			_, _ = fmt.Fprintf(w, "msgid_plural %q\n", msg.Other)
-			for i, f := range pluralForms.Forms {
+			for i, f := range pluralForms.CardinalForms {
 				var txt string
 				switch f {
-				case "zero":
+				case cldr.CLDRPluralFormZero:
 					txt = msg.Zero
-				case "one":
+				case cldr.CLDRPluralFormOne:
 					txt = msg.One
-				case "two":
+				case cldr.CLDRPluralFormTwo:
 					txt = msg.Two
-				case "few":
+				case cldr.CLDRPluralFormFew:
 					txt = msg.Few
-				case "many":
+				case cldr.CLDRPluralFormMany:
 					txt = msg.Many
-				case "other":
+				case cldr.CLDRPluralFormOther:
 					txt = msg.Other
 				default:
 					panic("unknown case: %q")
