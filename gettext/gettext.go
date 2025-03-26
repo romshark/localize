@@ -37,6 +37,17 @@ type Message struct {
 	Msgstr3     Msgstr
 	Msgstr4     Msgstr
 	Msgstr5     Msgstr
+
+	PreviousMsgctxt     StringLiteral // Unsupported yet
+	PreviousMsgid       StringLiteral // Unsupported yet
+	PreviousMsgidPlural StringLiteral // Unsupported yet
+	PreviousMsgstr      StringLiteral // Unsupported yet
+	PreviousMsgstr0     StringLiteral // Unsupported yet
+	PreviousMsgstr1     StringLiteral // Unsupported yet
+	PreviousMsgstr2     StringLiteral // Unsupported yet
+	PreviousMsgstr3     StringLiteral // Unsupported yet
+	PreviousMsgstr4     StringLiteral // Unsupported yet
+	PreviousMsgstr5     StringLiteral // Unsupported yet
 }
 
 // Clone returns a deep copy of m.
@@ -138,13 +149,23 @@ func (f FilePO) MakePOT() FilePOT {
 	cp.Head.PORevisionDate = Header{}
 	cp.Head.LanguageTeam = Header{}
 	for i, m := range f.Messages.List {
-		m.Msgstr.Text = StringLiterals{}
-		m.Msgstr0.Text = StringLiterals{}
-		m.Msgstr1.Text = StringLiterals{}
-		m.Msgstr2.Text = StringLiterals{}
-		m.Msgstr3.Text = StringLiterals{}
-		m.Msgstr4.Text = StringLiterals{}
-		m.Msgstr5.Text = StringLiterals{}
+		resetMsgstr := func(m *Msgstr) {
+			if len(m.Text.Lines) > 0 {
+				m.Text = StringLiterals{
+					Lines: []StringLiteral{{Value: ""}},
+				}
+			} else {
+				m.Text = StringLiterals{}
+			}
+		}
+
+		resetMsgstr(&m.Msgstr)
+		resetMsgstr(&m.Msgstr0)
+		resetMsgstr(&m.Msgstr1)
+		resetMsgstr(&m.Msgstr2)
+		resetMsgstr(&m.Msgstr3)
+		resetMsgstr(&m.Msgstr4)
+		resetMsgstr(&m.Msgstr5)
 		cp.Messages.List[i] = m
 	}
 	return FilePOT{File: cp}
@@ -154,8 +175,9 @@ func (f FilePO) MakePOT() FilePOT {
 type FilePOT struct{ *File }
 
 type File struct {
-	Head     FileHead
-	Messages Messages
+	Head             FileHead
+	Messages         Messages
+	ObsoleteMessages Messages // Not supported yet.
 }
 
 type Messages struct {
@@ -229,12 +251,10 @@ type CommentType uint8
 const (
 	_ CommentType = iota
 
-	CommentTypeTranslator           // #  translator-comments
-	CommentTypeExtracted            // #. extracted-comments
-	CommentTypeReference            // #: reference...
-	CommentTypeFlag                 // #, flag...
-	CommentTypePreviousContext      // #| msgctxt previous-context
-	CommentTypePreviousUntranslated // #| msgid previous-untranslated-string
+	CommentTypeTranslator // #  translator-comments
+	CommentTypeExtracted  // #. extracted-comments
+	CommentTypeReference  // #: reference...
+	CommentTypeFlag       // #, flag...
 )
 
 type Error struct {

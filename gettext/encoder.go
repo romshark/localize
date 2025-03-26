@@ -3,12 +3,10 @@ package gettext
 import (
 	"fmt"
 	"io"
+	"strings"
 )
 
-type Encoder struct {
-	// NoLocation disables "#:" (reference) comments.
-	// NoLocation bool
-}
+type Encoder struct{}
 
 // Encode encodes a `.po` translation file to w.
 func (e Encoder) EncodePO(f FilePO, w io.Writer) error { return e.encode(f.File, w) }
@@ -93,7 +91,7 @@ func (e Encoder) encode(f *File, w io.Writer) error {
 	}
 
 	for i, m := range f.Messages.List {
-		if !m.Msgctxt.IsZero() {
+		if len(m.Msgctxt.Text.Lines) > 0 {
 			if err := e.encodeComments(w, m.Msgctxt.Comments); err != nil {
 				return err
 			}
@@ -113,7 +111,7 @@ func (e Encoder) encode(f *File, w io.Writer) error {
 				}
 			}
 		}
-		if !m.Msgid.IsZero() {
+		if len(m.Msgid.Text.Lines) > 0 {
 			if err := e.encodeComments(w, m.Msgid.Comments); err != nil {
 				return err
 			}
@@ -133,7 +131,7 @@ func (e Encoder) encode(f *File, w io.Writer) error {
 				}
 			}
 		}
-		if !m.MsgidPlural.IsZero() {
+		if len(m.MsgidPlural.Text.Lines) > 0 {
 			if err := e.encodeComments(w, m.MsgidPlural.Comments); err != nil {
 				return err
 			}
@@ -153,7 +151,7 @@ func (e Encoder) encode(f *File, w io.Writer) error {
 				}
 			}
 		}
-		if !m.Msgstr.IsZero() {
+		if len(m.Msgstr.Text.Lines) > 0 {
 			if err := e.encodeComments(w, m.Msgstr.Comments); err != nil {
 				return err
 			}
@@ -173,7 +171,7 @@ func (e Encoder) encode(f *File, w io.Writer) error {
 				}
 			}
 		}
-		if !m.Msgstr0.IsZero() {
+		if len(m.Msgstr0.Text.Lines) > 0 {
 			if err := e.encodeComments(w, m.Msgstr0.Comments); err != nil {
 				return err
 			}
@@ -193,7 +191,7 @@ func (e Encoder) encode(f *File, w io.Writer) error {
 				}
 			}
 		}
-		if !m.Msgstr1.IsZero() {
+		if len(m.Msgstr1.Text.Lines) > 0 {
 			if err := e.encodeComments(w, m.Msgstr1.Comments); err != nil {
 				return err
 			}
@@ -213,7 +211,7 @@ func (e Encoder) encode(f *File, w io.Writer) error {
 				}
 			}
 		}
-		if !m.Msgstr2.IsZero() {
+		if len(m.Msgstr2.Text.Lines) > 0 {
 			if err := e.encodeComments(w, m.Msgstr2.Comments); err != nil {
 				return err
 			}
@@ -233,7 +231,7 @@ func (e Encoder) encode(f *File, w io.Writer) error {
 				}
 			}
 		}
-		if !m.Msgstr3.IsZero() {
+		if len(m.Msgstr3.Text.Lines) > 0 {
 			if err := e.encodeComments(w, m.Msgstr3.Comments); err != nil {
 				return err
 			}
@@ -253,7 +251,7 @@ func (e Encoder) encode(f *File, w io.Writer) error {
 				}
 			}
 		}
-		if !m.Msgstr4.IsZero() {
+		if len(m.Msgstr4.Text.Lines) > 0 {
 			if err := e.encodeComments(w, m.Msgstr4.Comments); err != nil {
 				return err
 			}
@@ -273,7 +271,7 @@ func (e Encoder) encode(f *File, w io.Writer) error {
 				}
 			}
 		}
-		if !m.Msgstr5.IsZero() {
+		if len(m.Msgstr5.Text.Lines) > 0 {
 			if err := e.encodeComments(w, m.Msgstr5.Comments); err != nil {
 				return err
 			}
@@ -313,33 +311,41 @@ func (e *Encoder) encodeComments(w io.Writer, c Comments) error {
 				}
 				continue
 			}
-			if _, err := fmt.Fprint(w, "# "); err != nil {
+			if err := printLines(w, "# ", c.Value); err != nil {
 				return err
 			}
 		case CommentTypeExtracted:
-			if _, err := fmt.Fprint(w, "#."); err != nil {
+			if err := printLines(w, "#. ", c.Value); err != nil {
 				return err
 			}
 		case CommentTypeReference:
-			if _, err := fmt.Fprint(w, "#:"); err != nil {
+			if err := printLines(w, "#: ", c.Value); err != nil {
 				return err
 			}
 		case CommentTypeFlag:
-			if _, err := fmt.Fprint(w, "#,"); err != nil {
-				return err
-			}
-		case CommentTypePreviousContext:
-			if _, err := fmt.Fprint(w, "#| msgctxt"); err != nil {
-				return err
-			}
-		case CommentTypePreviousUntranslated:
-			if _, err := fmt.Fprint(w, "#| msgid"); err != nil {
+			if err := printLines(w, "#, ", c.Value); err != nil {
 				return err
 			}
 		default:
 			return nil
 		}
-		if _, err := fmt.Fprintln(w, c.Value); err != nil {
+	}
+	return nil
+}
+
+func printLines(w io.Writer, prefix, s string) error {
+	for len(s) > 0 {
+		i := strings.IndexByte(s, '\n')
+		var line string
+		if i == -1 {
+			line, s = s, ""
+		} else {
+			line, s = s[:i], s[i+1:]
+		}
+		if _, err := fmt.Fprint(w, prefix); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintln(w, line); err != nil {
 			return err
 		}
 	}

@@ -70,6 +70,17 @@ func (p *Decoder) decode(fileName string, r io.Reader, template bool) (*File, er
 	return &f, nil
 }
 
+func (p *Decoder) advance(str []byte) {
+	for _, c := range str {
+		switch c {
+		case '\n':
+			p.advanceLine()
+		default:
+			p.advanceByte(1)
+		}
+	}
+}
+
 func (p *Decoder) advanceByte(n uint32) {
 	p.pos.Index += n
 	p.pos.Column += n
@@ -139,45 +150,57 @@ func (p *Decoder) readComment() (Comment, error) {
 		return c, nil
 	case ' ':
 		c.Type = CommentTypeTranslator
+		p.advanceByte(1)
 	case '.':
 		c.Type = CommentTypeExtracted
+		p.advanceByte(1)
+		b, err = p.reader.ReadByte()
+		if err != nil {
+			return Comment{}, err
+		}
+		if b != ' ' {
+			return Comment{}, p.errSyntax("space")
+		}
+		p.advanceByte(1)
 	case ':':
 		c.Type = CommentTypeReference
+		p.advanceByte(1)
+		b, err = p.reader.ReadByte()
+		if err != nil {
+			return Comment{}, err
+		}
+		if b != ' ' {
+			return Comment{}, p.errSyntax("space")
+		}
+		p.advanceByte(1)
 	case ',':
 		c.Type = CommentTypeFlag
+		p.advanceByte(1)
+		b, err = p.reader.ReadByte()
+		if err != nil {
+			return Comment{}, err
+		}
+		if b != ' ' {
+			return Comment{}, p.errSyntax("space")
+		}
+		p.advanceByte(1)
 	case '|':
-		next, err := p.reader.Peek(len(" msgctxt"))
+		// Previous is unsupported yet.
+		line, _, err := p.reader.ReadLine()
 		if err != nil {
 			return Comment{}, err
 		}
-		if string(next) == " msgctxt" {
-			c.Type = CommentTypePreviousContext
-			break
-		}
-
-		next, err = p.reader.Peek(len(" msgid"))
-		if err != nil {
-			return Comment{}, err
-		}
-		if string(next) == " msgid" {
-			c.Type = CommentTypePreviousUntranslated
-			break
-		}
-
-		return Comment{}, p.errSyntax("msgid or msgctxt")
+		p.advance(line)
 	default:
 		return Comment{}, p.errSyntax("space")
 	}
-
-	p.advanceByte(1)
 
 	line, _, err := p.reader.ReadLine()
 	if err != nil {
 		return Comment{}, err
 	}
 
-	p.advanceByte(uint32(len(line)))
-	p.advanceLine()
+	p.advance(line)
 	c.Span = p.span(start)
 	c.Value = string(line)
 	return c, nil
