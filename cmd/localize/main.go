@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"time"
 
 	"github.com/romshark/localize/gettext"
@@ -15,11 +14,6 @@ import (
 	"github.com/romshark/localize/internal/gengo"
 	"golang.org/x/text/language"
 	"mvdan.cc/gofumpt/format"
-)
-
-var (
-	OutputFormatPO         = "po"
-	OutputFormatPOTemplate = "pot"
 )
 
 func main() {
@@ -52,12 +46,11 @@ func run(osArgs []string) error {
 }
 
 func runGenerate(osArgs []string) error {
+	start := time.Now()
 	conf, err := parseCLIArgsGenerate(osArgs)
 	if err != nil {
 		return fmt.Errorf("parsing arguments: %w", err)
 	}
-
-	start := time.Now()
 
 	poEncoder := gettext.Encoder{}
 
@@ -85,7 +78,7 @@ func runGenerate(osArgs []string) error {
 	}
 
 	{ // Write the native source catalog file.
-		fileName := catalogFileName(conf.OutDirCatalog, conf.Locale, conf)
+		fileName := catalogFileName(conf.OutDirCatalog, conf.Locale)
 		f, err := os.OpenFile(fileName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
 		if err != nil {
 			return fmt.Errorf("opening output file: %v", err)
@@ -169,26 +162,20 @@ func runGenerate(osArgs []string) error {
 	return nil
 }
 
-func catalogFileName(pkgDir string, locale language.Tag, conf *ConfigGenerate) string {
-	fileName := "catalog." + locale.String() + "." + conf.OutputFormat
+func catalogFileName(pkgDir string, locale language.Tag) string {
+	fileName := "catalog." + locale.String() + ".po"
 	return filepath.Join(pkgDir, fileName)
 }
 
-func catalogTemplateFileName(outPath, outFormat string) string {
-	extension := outFormat
-	if extension == OutputFormatPO {
-		extension = OutputFormatPOTemplate
-	}
-	return filepath.Join(outPath, "catalog."+extension)
+func catalogTemplateFileName(outPath string) string {
+	return filepath.Join(outPath, "catalog.pot")
 }
 
 type ConfigGenerate struct {
 	Locale                 language.Tag
-	LocalesForTranslation  []language.Tag
 	SrcPathPattern         string
 	OutDirCatalog          string
 	OutPathCatalogTemplate string
-	OutputFormat           string
 	TrimPath               bool
 	QuietMode              bool
 	VerboseMode            bool
@@ -199,19 +186,16 @@ type ConfigGenerate struct {
 func parseCLIArgsGenerate(osArgs []string) (*ConfigGenerate, error) {
 	c := &ConfigGenerate{}
 
-	var templatesForLangs flagArray
 	var locale string
 
 	cli := flag.NewFlagSet(osArgs[0], flag.ExitOnError)
 	cli.StringVar(&locale, "l", "",
 		"default locale of the original source code texts in BCP 47")
-	cli.Var(&templatesForLangs, "t", "locale for translation (multiple allowed)")
 	cli.StringVar(&c.SrcPathPattern, "p", ".", "path to Go module")
 	cli.StringVar(&c.OutDirCatalog, "catdir", "",
 		"catalog output directory. Set to bundle package by default.")
 	cli.StringVar(&c.OutPathCatalogTemplate, "tmpl", "",
 		"catalog template output file path. Set to bundle package by default.")
-	cli.StringVar(&c.OutputFormat, "f", OutputFormatPO, "catalog output format")
 	cli.BoolVar(&c.TrimPath, "trimpath", true, "enable source code path trimming")
 	cli.BoolVar(&c.QuietMode, "q", false, "disable all console logging")
 	cli.BoolVar(&c.VerboseMode, "v", false, "enables verbose console logging")
@@ -227,18 +211,7 @@ func parseCLIArgsGenerate(osArgs []string) (*ConfigGenerate, error) {
 	}
 	if c.OutPathCatalogTemplate == "" {
 		c.OutPathCatalogTemplate = catalogTemplateFileName(
-			c.BundlePkgPath, c.OutputFormat,
-		)
-	}
-
-	switch c.OutputFormat {
-	case OutputFormatPO:
-	default:
-		return nil, fmt.Errorf(
-			"unsupported output format (available options: ["+
-				OutputFormatPO+
-				"]): %q",
-			c.OutputFormat,
+			c.BundlePkgPath,
 		)
 	}
 
@@ -257,42 +230,7 @@ func parseCLIArgsGenerate(osArgs []string) (*ConfigGenerate, error) {
 		)
 	}
 
-	// Sort and deduplicate.
-	slices.Sort(templatesForLangs)
-	templatesForLangs = slices.Compact(templatesForLangs)
-
-	c.LocalesForTranslation = make([]language.Tag, len(templatesForLangs))
-	for i, s := range templatesForLangs {
-		locale, err := language.Parse(s)
-		if err != nil {
-			return nil, fmt.Errorf(
-				"argument 't' at index %d (%q) must be a valid BCP 47 locale: %w",
-				i, s, err,
-			)
-		}
-		if locale == c.Locale {
-			return nil, fmt.Errorf(
-				"locale %q picked both for translation and as original source locale",
-				locale,
-			)
-		}
-		c.LocalesForTranslation[i] = locale
-	}
-
 	return c, nil
-}
-
-type flagArray []string
-
-var _ flag.Value = &flagArray{}
-
-func (i *flagArray) String() string {
-	return fmt.Sprintf("%v", *i)
-}
-
-func (i *flagArray) Set(value string) error {
-	*i = append(*i, value)
-	return nil
 }
 
 func goBundleFileName(pkgPath string) string {
