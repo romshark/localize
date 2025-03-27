@@ -25,7 +25,7 @@ import (
 	"github.com/romshark/localize/gettext"
 	"github.com/romshark/localize/internal/cldr"
 	"github.com/romshark/localize/internal/fmtplaceholder"
-	"github.com/romshark/localize/internal/strfmt"
+	"github.com/romshark/localize/strfmt"
 	"golang.org/x/text/language"
 	"golang.org/x/tools/go/packages"
 )

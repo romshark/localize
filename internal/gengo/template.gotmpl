@@ -19,7 +19,8 @@ import (
 	"fmt"
 	"iter"
 
-	"github.com/romshark/localize"	
+	"github.com/romshark/localize"
+	"github.com/romshark/localize/strfmt"
 	"golang.org/x/text/language"
 	"github.com/go-playground/locales"
 	{{ range .Catalogs }}
@@ -128,7 +129,7 @@ func (r {{ .TypeName }}) Block(text string) string {
 	{{ if .Native }}
 	// This reader reads the original source code's native locale.
 	// No translation necessary.
-	return text
+	return strfmt.Dedent(text)
 	{{ else }}
 	return {{ .TypeNameUnexported }}Static[text]
 	{{ end }}
@@ -213,7 +214,11 @@ func (r {{ .TypeName }}) Plural(
 func (r {{ .TypeName }}) PluralBlock(
 	templates localize.Forms, quantity any,
 ) (localized string) {	
+	{{ if .Native }}
+	return strfmt.Dedent(r.Plural(templates, quantity))
+	{{ else }}
 	return r.Plural(templates, quantity)
+	{{ end }}
 }
 
 // Translator returns the localized translator of github.com/go-playground/locales/{{ .LocalesSubpackage }}
