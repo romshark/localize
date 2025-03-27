@@ -54,35 +54,22 @@ type CatalogRevision struct {
 	Translator string    // Optional, format: "John Doe <john.doe@example.com>"
 }
 
-// Catalog is a collection of messages that can be marshaled into a .po gettext file.
-type Catalog struct {
-	HeadComment     string          // Optional
-	BugsReportEmail string          // Optional
-	LastRevision    CatalogRevision // Optional
-	Locale          language.Tag
-	Messages        map[Msg]MsgMeta
+// Collection is a collection of messages gathered from the
+type Collection struct {
+	Header   []string
+	Locale   language.Tag
+	Messages map[Msg]MsgMeta
 }
 
-func (c *Catalog) MakePO() gettext.FilePO {
+func (c *Collection) MakePO() gettext.FilePO {
 	var h gettext.FileHead
-	if c.BugsReportEmail != "" {
-		h.ReportMsgidBugsTo = gettext.Header{Value: c.BugsReportEmail}
-	}
-	if c.LastRevision.Translator != "" {
-		h.LastTranslator = gettext.Header{Value: c.LastRevision.Translator}
-	}
-	if !c.LastRevision.DateTime.IsZero() {
-		h.PORevisionDate = gettext.Header{
-			Value: c.LastRevision.DateTime.Format("2006-01-02 15:04Z07:00"),
-		}
-	}
 	h.Language = gettext.HeaderLanguage{
-		Header: gettext.Header{Value: c.Locale.String()},
+		Value:  c.Locale.String(),
 		Locale: c.Locale,
 	}
-	h.MIMEVersion = gettext.Header{Value: "1.0"}
-	h.ContentType = gettext.Header{Value: "text/plain; charset=UTF-8"}
-	h.ContentTransferEncoding = gettext.Header{Value: "8bit"}
+	h.MIMEVersion = "1.0"
+	h.ContentType = "text/plain; charset=UTF-8"
+	h.ContentTransferEncoding = "8bit"
 
 	pluralForms, ok := cldr.ByTag(c.Locale)
 	if !ok {
@@ -92,15 +79,16 @@ func (c *Catalog) MakePO() gettext.FilePO {
 			panic(fmt.Errorf("unsupported locale: %v", c.Locale))
 		}
 	}
-	h.PluralForms = gettext.Header{
-		Value: pluralForms.GettextPluralForms,
-	}
+	h.PluralForms = pluralForms.GettextPluralForms
 
-	if c.HeadComment != "" {
-		h.HeadComments.Text = append(h.HeadComments.Text, gettext.Comment{
-			Type:  gettext.CommentTypeTranslator,
-			Value: c.HeadComment,
-		})
+	if c.Header != nil {
+		for _, line := range c.Header {
+			trimmed := strings.TrimSpace(line)
+			h.HeadComments.Text = append(h.HeadComments.Text, gettext.Comment{
+				Type:  gettext.CommentTypeTranslator,
+				Value: trimmed,
+			})
+		}
 	}
 
 	var m gettext.Messages
@@ -212,7 +200,7 @@ func (c *Catalog) MakePO() gettext.FilePO {
 }
 
 // Ordered returns an iterator over all messages ordered by hash.
-func (c *Catalog) Ordered() iter.Seq2[Msg, MsgMeta] {
+func (c *Collection) Ordered() iter.Seq2[Msg, MsgMeta] {
 	ordered := make([]Msg, 0, len(c.Messages))
 	for k := range maps.Keys(c.Messages) {
 		ordered = append(ordered, k)
@@ -280,7 +268,7 @@ func Parse(
 	pathPattern, bundlePkg string,
 	locale language.Tag, trimpath, quiet, verbose bool,
 ) (
-	catalog *Catalog, bundle *Bundle, stats *Statistics,
+	collection *Collection, bundle *Bundle, stats *Statistics,
 	srcErrs []ErrorSrc, err error,
 ) {
 	fileset := token.NewFileSet()
@@ -292,7 +280,7 @@ func Parse(
 		base, _ := locale.Base()
 		pluralForms, ok = cldr.ByBase(base)
 		if !ok {
-			return catalog, bundle, stats, srcErrs, fmt.Errorf(
+			return collection, bundle, stats, srcErrs, fmt.Errorf(
 				"%w: %v", ErrUnsupportedLocale, locale,
 			)
 		}
@@ -313,22 +301,38 @@ func Parse(
 		return nil, nil, nil, nil, fmt.Errorf("loading packages: %w", err)
 	}
 
-	catalog = &Catalog{
+	collection = &Collection{
 		Messages: make(map[Msg]MsgMeta),
 		Locale:   locale,
 	}
 
-	fmt.Println(bundlePkg)
-
 	for _, pkg := range pkgs {
 		if isPkgLocalizeBundle(bundlePkg, pkg) {
+			if !quiet && verbose {
+				fmt.Fprintf(os.Stderr, "bundle detected: %s\n", pkg.Dir)
+			}
+
+			// Find head.txt
+			head, err := os.ReadFile(filepath.Join(pkg.Dir, "head.txt"))
+			if err != nil {
+				if !errors.Is(err, os.ErrNotExist) {
+					return collection, bundle, stats, srcErrs,
+						fmt.Errorf("reading head.txt: %w", err)
+				}
+			}
+			collection.Header = strings.Split(string(head), "\n")
+
 			bundle, err := ParseBundle(pkg)
 			if err != nil {
-				return catalog, nil, stats, nil, fmt.Errorf(
+				return collection, nil, stats, nil, fmt.Errorf(
 					"parsing bundle: %w", err,
 				)
 			}
-			fmt.Println("BUNDLE", bundle)
+			if !quiet && verbose {
+				for locale := range bundle.Translations {
+					fmt.Fprintf(os.Stderr, "catalog detected: %s\n", locale.String())
+				}
+			}
 		}
 
 		for _, file := range pkg.Syntax {
@@ -462,16 +466,16 @@ func Parse(
 
 					msg.Hash = messageHash(msg.Other, msg.Description)
 
-					if m, ok := catalog.Messages[msg]; ok {
+					if m, ok := collection.Messages[msg]; ok {
 						// Identical message was already found in another place.
 						// Merge messages into one.
 						m.Pos = append(m.Pos, pos)
-						catalog.Messages[msg] = m
+						collection.Messages[msg] = m
 						stats.Merges.Add(1)
 					} else {
 						// New message found.
 						m.Pos = []token.Position{pos}
-						catalog.Messages[msg] = m
+						collection.Messages[msg] = m
 					}
 
 					return true
@@ -480,7 +484,7 @@ func Parse(
 		}
 	}
 
-	return catalog, bundle, stats, srcErrs, nil
+	return collection, bundle, stats, srcErrs, nil
 }
 
 func isPkgLocalizeBundle(bundlePkg string, pkg *packages.Package) bool {

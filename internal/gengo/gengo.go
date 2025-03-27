@@ -16,8 +16,8 @@ import (
 var templateGotmpl string
 
 func Write(
-	w io.Writer, sourceLocale language.Tag, headComment string,
-	packageName string, catalogs ...*codeparser.Catalog,
+	w io.Writer, sourceLocale language.Tag, headComment []string,
+	packageName string, catalogs ...*codeparser.Collection,
 ) error {
 	tmpl, err := template.New("gen").Parse(templateGotmpl)
 	if err != nil {
@@ -65,7 +65,7 @@ func Write(
 		}
 	}
 	return tmpl.Execute(w, struct {
-		HeadComment      string
+		HeadComment      []string
 		GeneratorVersion string
 		BundleVersion    string
 		Package          string
