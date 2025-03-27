@@ -32,6 +32,10 @@ func TestDecodeEncode(t *testing.T) {
 			PO:  "testdata/utf8.uk.po",
 			POT: "testdata/utf8.pot",
 		},
+		{
+			PO:  "testdata/deprecated.po",
+			POT: "testdata/deprecated.pot",
+		},
 	} {
 		t.Run(files.PO, func(t *testing.T) {
 			// Decode `.po` from original.

@@ -27,6 +27,8 @@ func (s Span) IsZero() bool { return s.Len == 0 }
 
 type Message struct {
 	Span
+	Obsolete bool
+
 	Msgctxt     Msgctxt
 	Msgid       Msgid
 	MsgidPlural MsgidPlural
@@ -145,10 +147,14 @@ type FilePO struct{ *File }
 func (f FilePO) MakePOT() FilePOT {
 	cp := f.Clone()
 	cp.Head.Language = HeaderLanguage{}
-	cp.Head.LastTranslator = Header{}
-	cp.Head.PORevisionDate = Header{}
-	cp.Head.LanguageTeam = Header{}
+	cp.Head.LastTranslator = ""
+	cp.Head.PORevisionDate = ""
+	cp.Head.LanguageTeam = ""
 	for i, m := range f.Messages.List {
+		if m.Obsolete {
+			// Don't include obsolete (#~) messages in the .pot
+			continue
+		}
 		resetMsgstr := func(m *Msgstr) {
 			if len(m.Text.Lines) > 0 {
 				m.Text = StringLiterals{
@@ -175,9 +181,8 @@ func (f FilePO) MakePOT() FilePOT {
 type FilePOT struct{ *File }
 
 type File struct {
-	Head             FileHead
-	Messages         Messages
-	ObsoleteMessages Messages // Not supported yet.
+	Head     FileHead
+	Messages Messages
 }
 
 type Messages struct {
@@ -204,33 +209,33 @@ func (f *File) Clone() *File {
 type FileHead struct {
 	Span
 	HeadComments            Comments
-	ProjectIdVersion        Header
-	ReportMsgidBugsTo       Header
-	POTCreationDate         Header
-	PORevisionDate          Header
-	LastTranslator          Header
-	LanguageTeam            Header
+	ProjectIdVersion        string
+	ReportMsgidBugsTo       string
+	POTCreationDate         string
+	PORevisionDate          string
+	LastTranslator          string
+	LanguageTeam            string
 	Language                HeaderLanguage
-	MIMEVersion             Header
-	ContentType             Header
-	ContentTransferEncoding Header
-	PluralForms             Header
-	NonStandard             []Header
+	MIMEVersion             string
+	ContentType             string
+	ContentTransferEncoding string
+	PluralForms             string
+	NonStandard             []XHeader
 }
 
 // Clone returns a deep copy of h.
 func (f FileHead) Clone() FileHead {
 	cp := f
 	cp.HeadComments = f.HeadComments.Clone()
-	cp.NonStandard = make([]Header, len(f.NonStandard))
+	cp.NonStandard = make([]XHeader, len(f.NonStandard))
 	copy(cp.NonStandard, f.NonStandard)
 	return cp
 }
 
-type Header struct{ Name, Value string }
+type XHeader struct{ Name, Value string }
 
 type HeaderLanguage struct {
-	Header
+	Value  string
 	Locale language.Tag
 }
 

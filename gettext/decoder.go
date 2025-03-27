@@ -13,8 +13,8 @@ import (
 	"golang.org/x/text/language"
 )
 
-func (p *Decoder) errSyntax(expected string) Error {
-	return Error{Pos: p.pos, Expected: expected}
+func (d *Decoder) errSyntax(expected string) Error {
+	return Error{Pos: d.pos, Expected: expected}
 }
 
 type Decoder struct {
@@ -29,30 +29,33 @@ func NewDecoder() *Decoder {
 }
 
 // DecodePO decodes a .po translation file from r.
-func (p *Decoder) DecodePO(fileName string, r io.Reader) (FilePO, error) {
-	f, err := p.decode(fileName, r, false)
+func (d *Decoder) DecodePO(fileName string, r io.Reader) (FilePO, error) {
+	f, err := d.decode(fileName, r, false)
 	return FilePO{File: f}, err
 }
 
 // DecodePOT decodes a .pot template file from r.
-func (p *Decoder) DecodePOT(fileName string, r io.Reader) (FilePOT, error) {
-	f, err := p.decode(fileName, r, true)
+func (d *Decoder) DecodePOT(fileName string, r io.Reader) (FilePOT, error) {
+	f, err := d.decode(fileName, r, true)
 	return FilePOT{File: f}, err
 }
 
-func (p *Decoder) decode(fileName string, r io.Reader, template bool) (*File, error) {
-	p.reader.Reset(r)
-	p.pos.Filename, p.pos.Index, p.pos.Line, p.pos.Column = fileName, 0, 1, 1
+func (d *Decoder) decode(fileName string, r io.Reader, template bool) (*File, error) {
+	d.reader.Reset(r)
+	d.pos.Filename, d.pos.Index, d.pos.Line, d.pos.Column = fileName, 0, 1, 1
 
 	var f File
-	h, err := p.readHeader(template)
+	mHead, err := d.readMessage()
 	if err != nil {
 		return nil, err
 	}
-	f.Head = h
+	f.Head, err = d.parseHead(mHead, template)
+	if err != nil {
+		return nil, err
+	}
 
 	for {
-		err := p.readWhitespace()
+		err := d.readOptionalWhitespace()
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				break
@@ -60,7 +63,7 @@ func (p *Decoder) decode(fileName string, r io.Reader, template bool) (*File, er
 			return nil, err
 		}
 
-		m, err := p.readMessage()
+		m, err := d.readMessage()
 		if err != nil {
 			return nil, err
 		}
@@ -70,48 +73,48 @@ func (p *Decoder) decode(fileName string, r io.Reader, template bool) (*File, er
 	return &f, nil
 }
 
-func (p *Decoder) advance(str []byte) {
+func (d *Decoder) advance(str []byte) {
 	for _, c := range str {
 		switch c {
 		case '\n':
-			p.advanceLine()
+			d.advanceLine()
 		default:
-			p.advanceByte(1)
+			d.advanceByte(1)
 		}
 	}
 }
 
-func (p *Decoder) advanceByte(n uint32) {
-	p.pos.Index += n
-	p.pos.Column += n
+func (d *Decoder) advanceByte(n uint32) {
+	d.pos.Index += n
+	d.pos.Column += n
 }
 
-func (p *Decoder) advanceLine() {
-	p.pos.Index++
-	p.pos.Line++
-	p.pos.Column = 1
+func (d *Decoder) advanceLine() {
+	d.pos.Index++
+	d.pos.Line++
+	d.pos.Column = 1
 }
 
-func (p *Decoder) span(start Position) Span {
-	return Span{Position: start, Len: p.pos.Index - start.Index}
+func (d *Decoder) span(start Position) Span {
+	return Span{Position: start, Len: d.pos.Index - start.Index}
 }
 
-// readWhitespace reads spaces, tabs, carriage-returns and line-breaks.
-func (p *Decoder) readWhitespace() error {
+// readOptionalWhitespace reads spaces, tabs, carriage-returns and line-breaks.
+func (d *Decoder) readOptionalWhitespace() error {
 	for {
-		b, err := p.reader.ReadByte()
+		b, err := d.reader.ReadByte()
 		if err != nil {
 			return err
 		}
 		switch b {
 		case ' ', '\r', '\t':
-			p.advanceByte(1)
+			d.advanceByte(1)
 			continue
 		case '\n':
-			p.advanceLine()
+			d.advanceLine()
 			continue
 		}
-		if err := p.reader.UnreadByte(); err != nil {
+		if err := d.reader.UnreadByte(); err != nil {
 			panic(err) // Should never happen.
 		}
 		break
@@ -119,25 +122,25 @@ func (p *Decoder) readWhitespace() error {
 	return nil
 }
 
-func (p *Decoder) readComment() (Comment, error) {
-	start := p.pos
+func (d *Decoder) readComment() (Comment, error) {
+	start := d.pos
 
-	b, err := p.reader.ReadByte()
+	b, err := d.reader.ReadByte()
 	if err != nil {
 		return Comment{}, err
 	}
 
 	if b != '#' {
-		if err := p.reader.UnreadByte(); err != nil {
+		if err := d.reader.UnreadByte(); err != nil {
 			panic(err) // Should never happen
 		}
 		return Comment{}, nil // Not a comment
 	}
 
-	p.advanceByte(1)
+	d.advanceByte(1)
 
 	var c Comment
-	b, err = p.reader.ReadByte()
+	b, err = d.reader.ReadByte()
 	if err != nil {
 		return Comment{}, err
 	}
@@ -145,72 +148,87 @@ func (p *Decoder) readComment() (Comment, error) {
 	case '\n':
 		// Empty comment
 		c.Type = CommentTypeTranslator
-		p.advanceLine()
-		c.Span = p.span(start)
+		d.advanceLine()
+		c.Span = d.span(start)
 		return c, nil
 	case ' ':
 		c.Type = CommentTypeTranslator
-		p.advanceByte(1)
+		d.advanceByte(1)
 	case '.':
 		c.Type = CommentTypeExtracted
-		p.advanceByte(1)
-		b, err = p.reader.ReadByte()
+		d.advanceByte(1)
+		b, err = d.reader.ReadByte()
 		if err != nil {
 			return Comment{}, err
 		}
 		if b != ' ' {
-			return Comment{}, p.errSyntax("space")
+			return Comment{}, d.errSyntax("space")
 		}
-		p.advanceByte(1)
+		d.advanceByte(1)
 	case ':':
 		c.Type = CommentTypeReference
-		p.advanceByte(1)
-		b, err = p.reader.ReadByte()
+		d.advanceByte(1)
+		b, err = d.reader.ReadByte()
 		if err != nil {
 			return Comment{}, err
 		}
 		if b != ' ' {
-			return Comment{}, p.errSyntax("space")
+			return Comment{}, d.errSyntax("space")
 		}
-		p.advanceByte(1)
+		d.advanceByte(1)
 	case ',':
 		c.Type = CommentTypeFlag
-		p.advanceByte(1)
-		b, err = p.reader.ReadByte()
+		d.advanceByte(1)
+		b, err = d.reader.ReadByte()
 		if err != nil {
 			return Comment{}, err
 		}
 		if b != ' ' {
-			return Comment{}, p.errSyntax("space")
+			return Comment{}, d.errSyntax("space")
 		}
-		p.advanceByte(1)
+		d.advanceByte(1)
 	case '|':
 		// Previous is unsupported yet.
-		line, _, err := p.reader.ReadLine()
+		line, _, err := d.reader.ReadLine()
 		if err != nil {
 			return Comment{}, err
 		}
-		p.advance(line)
+		d.advance(line)
 	default:
-		return Comment{}, p.errSyntax("space")
+		return Comment{}, d.errSyntax("space")
 	}
 
-	line, _, err := p.reader.ReadLine()
+	line, _, err := d.reader.ReadLine()
 	if err != nil {
 		return Comment{}, err
 	}
 
-	p.advance(line)
-	c.Span = p.span(start)
+	d.advance(line)
+	c.Span = d.span(start)
 	c.Value = string(line)
 	return c, nil
 }
 
-func (p *Decoder) readComments() (Comments, error) {
-	start := p.pos
+func (d *Decoder) readComments(obsolete bool) (Comments, error) {
+	start := d.pos
 	var l Comments
 	for {
-		c, err := p.readComment()
+		if obsolete {
+			next, err := d.reader.Peek(4)
+			if err != nil {
+				return Comments{}, err
+			}
+			if string(next) != "#~ #" {
+				// Not a comment on an obsolete message.
+				return l, nil
+			}
+
+			if err := d.readPrefixObsolete(); err != nil {
+				return Comments{}, err
+			}
+		}
+
+		c, err := d.readComment()
 		if err != nil {
 			return l, err
 		}
@@ -219,81 +237,102 @@ func (p *Decoder) readComments() (Comments, error) {
 		}
 		l.Text = append(l.Text, c)
 	}
-	l.Span = p.span(start)
+	l.Span = d.span(start)
 	return l, nil
 }
 
-func (p *Decoder) readHeader(template bool) (FileHead, error) {
-	start := p.pos
-	if err := p.readWhitespace(); err != nil {
-		return FileHead{}, err
-	}
-
-	var h FileHead
-
-	stmt, err := p.readStatement()
+func (d *Decoder) readPrefixObsolete() error {
+	b, err := d.reader.ReadByte()
 	if err != nil {
-		return FileHead{}, err
+		return err
 	}
-
-	if stmt.statementType != statementTypeMsgid ||
-		len(stmt.text.Lines) > 1 ||
-		stmt.text.Lines[0].Value != "" {
-		return FileHead{}, p.errSyntax("header msgid")
+	if b != '#' {
+		return d.errSyntax("#")
 	}
-	h.HeadComments = stmt.comments
+	d.advanceByte(1)
 
-	stmt, err = p.readStatement()
+	b, err = d.reader.ReadByte()
 	if err != nil {
-		return FileHead{}, err
+		return err
 	}
-	if stmt.statementType != statementTypeMsgstr ||
-		len(stmt.text.Lines) < 1 ||
-		stmt.text.Lines[0].Value == "" {
-		return FileHead{}, p.errSyntax("header msgstr")
+	if b != '~' {
+		return d.errSyntax("~")
 	}
-	if len(stmt.comments.Text) > 0 {
-		return FileHead{}, Error{
-			Pos:      p.pos,
-			Expected: "header msgstr",
-		}
+	d.advanceByte(1)
+
+	b, err = d.reader.ReadByte()
+	if err != nil {
+		return err
+	}
+	if b != ' ' {
+		return d.errSyntax("space")
+	}
+	d.advanceByte(1)
+
+	return nil
+}
+
+func (d *Decoder) parseHead(m Message, template bool) (h FileHead, err error) {
+	if !m.Msgctxt.IsZero() {
+		return FileHead{}, Error{Pos: m.Msgctxt.Position}
+	}
+	if !m.MsgidPlural.IsZero() {
+		return FileHead{}, Error{Pos: m.MsgidPlural.Position}
+	}
+	if !m.Msgstr0.IsZero() {
+		return FileHead{}, Error{Pos: m.Msgstr0.Position}
+	}
+	if !m.Msgstr1.IsZero() {
+		return FileHead{}, Error{Pos: m.Msgstr1.Position}
+	}
+	if !m.Msgstr2.IsZero() {
+		return FileHead{}, Error{Pos: m.Msgstr2.Position}
+	}
+	if !m.Msgstr3.IsZero() {
+		return FileHead{}, Error{Pos: m.Msgstr3.Position}
+	}
+	if !m.Msgstr4.IsZero() {
+		return FileHead{}, Error{Pos: m.Msgstr4.Position}
+	}
+	if !m.Msgstr5.IsZero() {
+		return FileHead{}, Error{Pos: m.Msgstr5.Position}
+	}
+	if m.Msgid.Text.String() != "" {
+		return FileHead{}, Error{Pos: m.Msgid.Position, Expected: "empty msgid"}
+	}
+	if len(m.Msgstr.Text.Lines) < 1 {
+		return FileHead{}, Error{Pos: m.Msgid.Position, Expected: "msgstr with headers"}
 	}
 
-	for _, l := range stmt.text.Lines {
-		pos := l.Position
-		header, err := parseHeader(pos, l.Value)
-		if err != nil {
-			return FileHead{}, err
+	// Join the msgstr lines, then split by "\n"
+	// to get individual header key-value pairs.
+	headers := strings.Split(m.Msgstr.Text.String(), "\n")
+
+	pos := m.Msgstr.Position
+	byName := make(map[string]struct{}, len(headers))
+	for _, header := range headers {
+		if header == "" {
+			continue
 		}
-		switch header.Name {
+		name, value := splitHeader(header)
+		if err := checkHeaderDuplicate(pos, byName, name); err != nil {
+			return h, err
+		}
+		switch name {
 		case "Project-Id-Version":
-			if err := setHeader(pos, &h.ProjectIdVersion, header); err != nil {
-				return h, err
-			}
+			h.ProjectIdVersion = value
 		case "Report-Msgid-Bugs-To":
-			if err := setHeader(pos, &h.ReportMsgidBugsTo, header); err != nil {
-				return h, err
-			}
+			h.ReportMsgidBugsTo = value
 		case "POT-Creation-Date":
-			if err := setHeader(pos, &h.POTCreationDate, header); err != nil {
-				return h, err
-			}
+			h.POTCreationDate = value
 		case "PO-Revision-Date":
-			if err := setHeader(pos, &h.PORevisionDate, header); err != nil {
-				return h, err
-			}
+			h.PORevisionDate = value
 		case "Last-Translator":
-			if err := setHeader(pos, &h.LastTranslator, header); err != nil {
-				return h, err
-			}
+			h.LastTranslator = value
 		case "Language-Team":
-			if err := setHeader(pos, &h.LanguageTeam, header); err != nil {
-				return h, err
-			}
+			h.LanguageTeam = value
 		case "Language":
-			if err := setHeader(pos, &h.Language.Header, header); err != nil {
-				return h, err
-			}
+			h.Language.Value = value
 			if template && h.Language.Value != "" {
 				return h, Error{
 					Pos: pos,
@@ -310,36 +349,30 @@ func (p *Decoder) readHeader(template bool) (FileHead, error) {
 				h.Language.Locale = locale
 			}
 		case "MIME-Version":
-			if err := setHeader(pos, &h.MIMEVersion, header); err != nil {
-				return h, err
-			}
-			if h.MIMEVersion.Value != "1.0" {
+			h.MIMEVersion = value
+			if h.MIMEVersion != "1.0" {
 				return h, Error{
 					Pos: pos,
 					Err: ErrUnsupportedMIMEVersion,
 				}
 			}
 		case "Content-Type":
-			if err := setHeader(pos, &h.ContentType, header); err != nil {
-				return h, err
-			}
-			if _, _, err := mime.ParseMediaType(h.ContentType.Value); err != nil {
+			h.ContentType = value
+			if _, _, err := mime.ParseMediaType(h.ContentType); err != nil {
 				return h, Error{
 					Pos: pos,
 					Err: ErrMalformedHeaderContentType,
 				}
 			}
-			if h.ContentType.Value != "text/plain; charset=UTF-8" {
+			if h.ContentType != "text/plain; charset=UTF-8" {
 				return h, Error{
 					Pos: pos,
 					Err: ErrUnsupportedContentType,
 				}
 			}
 		case "Content-Transfer-Encoding":
-			if err := setHeader(pos, &h.ContentTransferEncoding, header); err != nil {
-				return h, err
-			}
-			switch h.ContentTransferEncoding.Value {
+			h.ContentTransferEncoding = value
+			switch h.ContentTransferEncoding {
 			case "8bit":
 				// OK
 			default:
@@ -349,24 +382,24 @@ func (p *Decoder) readHeader(template bool) (FileHead, error) {
 				}
 			}
 		case "Plural-Forms":
-			if err := setHeader(l.Position, &h.PluralForms, header); err != nil {
-				return h, err
-			}
+			h.PluralForms = value
 			// TODO: validate
 		default:
-			if strings.HasPrefix(header.Name, "X-") {
+			if strings.HasPrefix(name, "X-") {
 				for _, nsh := range h.NonStandard {
-					if nsh.Name == header.Name {
+					if nsh.Name == name {
 						return h, Error{
 							Pos: pos,
 							Err: ErrDuplicateHeader,
 						}
 					}
 				}
-				h.NonStandard = append(h.NonStandard, header)
+				h.NonStandard = append(h.NonStandard, XHeader{
+					Name:  name,
+					Value: value,
+				})
 				break
 			}
-
 			return h, Error{
 				Pos: pos,
 				Err: ErrUnsupportedHeader,
@@ -374,7 +407,8 @@ func (p *Decoder) readHeader(template bool) (FileHead, error) {
 		}
 	}
 
-	h.Span = p.span(start)
+	h.HeadComments = m.Msgid.Comments
+
 	return h, nil
 }
 
@@ -387,37 +421,40 @@ var (
 	prefixLineBreak     = []byte("\n")
 )
 
-func (p *Decoder) readMessage() (m Message, err error) {
-	start := p.pos
+func (d *Decoder) readMessage() (m Message, err error) {
+	start := d.pos
 
 	var previous statement
+	next, err := d.reader.Peek(2)
+	m.Obsolete = err == nil && string(next) == "#~"
+
 LOOP:
 	for {
-		stmt, err := p.readStatement()
+		stmt, err := d.readStatement(m.Obsolete)
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				switch previous.statementType {
 				case 0:
 					return m, Error{
-						Pos:      p.pos,
+						Pos:      d.pos,
 						Expected: "msgctxt or msgid",
 						Err:      io.ErrUnexpectedEOF,
 					}
 				case statementTypeMsgctxt:
 					return m, Error{
-						Pos:      p.pos,
+						Pos:      d.pos,
 						Expected: "msgid",
 						Err:      io.ErrUnexpectedEOF,
 					}
 				case statementTypeMsgid:
 					return m, Error{
-						Pos:      p.pos,
+						Pos:      d.pos,
 						Expected: "msgid_plural or msgstr",
 						Err:      io.ErrUnexpectedEOF,
 					}
 				case statementTypeMsgidPlural:
 					return m, Error{
-						Pos:      p.pos,
+						Pos:      d.pos,
 						Expected: "msgstr",
 						Err:      io.ErrUnexpectedEOF,
 					}
@@ -429,7 +466,7 @@ LOOP:
 					return m, nil
 				}
 			}
-			return Message{}, err
+			return m, err
 		}
 
 		// TODO: return correct expectations taking
@@ -444,16 +481,16 @@ LOOP:
 				m.Msgctxt.Comments = stmt.comments
 				m.Msgctxt.Text = stmt.text
 			case statementTypeMsgctxt:
-				return m, p.errSyntax("msgid")
+				return m, d.errSyntax("msgid")
 			case statementTypeMsgid:
-				return m, p.errSyntax("msgstr or msgid_plural")
+				return m, d.errSyntax("msgstr or msgid_plural")
 			case statementTypeMsgidPlural:
-				return m, p.errSyntax("msgstr[0]")
+				return m, d.errSyntax("msgstr[0]")
 			case statementTypeMsgstr:
-				return m, p.errSyntax("msgctxt or msgid")
+				return m, d.errSyntax("msgctxt or msgid")
 			case statementTypeMsgstrIndexed:
 				if stmt.pluralFormIndex <= previous.pluralFormIndex {
-					return m, p.errSyntax(fmt.Sprintf("msgstr[%d]",
+					return m, d.errSyntax(fmt.Sprintf("msgstr[%d]",
 						previous.pluralFormIndex+1))
 				}
 			}
@@ -464,62 +501,62 @@ LOOP:
 				m.Msgid.Comments = stmt.comments
 				m.Msgid.Text = stmt.text
 			case statementTypeMsgidPlural:
-				return m, p.errSyntax("msgstr[0]")
+				return m, d.errSyntax("msgstr[0]")
 			case statementTypeMsgstr:
-				return m, p.errSyntax("msgctxt or msgid")
+				return m, d.errSyntax("msgctxt or msgid")
 			case statementTypeMsgstrIndexed:
 				if stmt.pluralFormIndex <= previous.pluralFormIndex {
-					return m, p.errSyntax(fmt.Sprintf("msgstr[%d]",
+					return m, d.errSyntax(fmt.Sprintf("msgstr[%d]",
 						previous.pluralFormIndex+1))
 				}
 			}
 		case statementTypeMsgidPlural:
 			switch previous.statementType {
 			case 0:
-				return m, p.errSyntax("msgctxt or msgid")
+				return m, d.errSyntax("msgctxt or msgid")
 			case statementTypeMsgctxt:
-				return m, p.errSyntax("msgid")
+				return m, d.errSyntax("msgid")
 			case statementTypeMsgid:
 				m.MsgidPlural.Span = stmt.Span
 				m.MsgidPlural.Comments = stmt.comments
 				m.MsgidPlural.Text = stmt.text
 			case statementTypeMsgidPlural:
-				return m, p.errSyntax("msgstr[0]")
+				return m, d.errSyntax("msgstr[0]")
 			case statementTypeMsgstr:
-				return m, p.errSyntax("msgctxt or msgid")
+				return m, d.errSyntax("msgctxt or msgid")
 			case statementTypeMsgstrIndexed:
 				if stmt.pluralFormIndex <= previous.pluralFormIndex {
-					return m, p.errSyntax(fmt.Sprintf("msgstr[%d]",
+					return m, d.errSyntax(fmt.Sprintf("msgstr[%d]",
 						previous.pluralFormIndex+1))
 				}
 			}
 		case statementTypeMsgstr:
 			switch previous.statementType {
 			case 0:
-				return m, p.errSyntax("msgctxt or msgid")
+				return m, d.errSyntax("msgctxt or msgid")
 			case statementTypeMsgctxt:
-				return m, p.errSyntax("msgid")
+				return m, d.errSyntax("msgid")
 			case statementTypeMsgid:
 				m.Msgstr.Span = stmt.Span
 				m.Msgstr.Comments = stmt.comments
 				m.Msgstr.Text = stmt.text
 			case statementTypeMsgidPlural:
-				return m, p.errSyntax("msgstr[0]")
+				return m, d.errSyntax("msgstr[0]")
 			case statementTypeMsgstr:
-				return m, p.errSyntax("msgctxt or msgid")
+				return m, d.errSyntax("msgctxt or msgid")
 			case statementTypeMsgstrIndexed:
-				return m, p.errSyntax("msgstr[n] or msgctxt or msgid")
+				return m, d.errSyntax("msgstr[n] or msgctxt or msgid")
 			}
 		case statementTypeMsgstrIndexed:
 			switch previous.statementType {
 			case 0:
-				return m, p.errSyntax("msgctxt or msgid")
+				return m, d.errSyntax("msgctxt or msgid")
 			case statementTypeMsgctxt:
-				return m, p.errSyntax("msgid")
+				return m, d.errSyntax("msgid")
 			case statementTypeMsgid:
-				return m, p.errSyntax("msgid_plural or msgstr")
+				return m, d.errSyntax("msgid_plural or msgstr")
 			case statementTypeMsgstr:
-				return m, p.errSyntax("msgctxt or msgid")
+				return m, d.errSyntax("msgctxt or msgid")
 			case statementTypeMsgidPlural, statementTypeMsgstrIndexed:
 				var msg *Msgstr
 				switch stmt.pluralFormIndex {
@@ -541,7 +578,7 @@ LOOP:
 				}
 				if previous.statementType == statementTypeMsgstrIndexed &&
 					stmt.pluralFormIndex <= previous.pluralFormIndex {
-					return m, p.errSyntax(fmt.Sprintf("msgstr[%d]",
+					return m, d.errSyntax(fmt.Sprintf("msgstr[%d]",
 						previous.pluralFormIndex+1))
 				}
 				msg.Span = stmt.Span
@@ -552,7 +589,7 @@ LOOP:
 		previous = stmt
 	}
 
-	m.Span = p.span(start)
+	m.Span = d.span(start)
 	return m, nil
 }
 
@@ -577,53 +614,66 @@ type statement struct {
 }
 
 // readStatement parses either msgctxt, msgid, msgid_plural and msgstr[%d]
-func (p *Decoder) readStatement() (stmt statement, err error) {
-	start := p.pos
+func (d *Decoder) readStatement(obsolete bool) (stmt statement, err error) {
+	start := d.pos
 
-	comments, err := p.readComments()
+	comments, err := d.readComments(obsolete)
 	if err != nil {
 		return statement{}, err
 	}
 	stmt.comments = comments
 
+	if obsolete {
+		b, err := d.peekByte()
+		if err != nil {
+			return statement{}, err
+		}
+		if b == '\n' {
+			return statement{}, nil
+		}
+		if err := d.readPrefixObsolete(); err != nil {
+			return statement{}, err
+		}
+	}
+
 	longestPossiblePrefixLen := len(prefixMsgidPlural)
-	next, err := p.reader.Peek(longestPossiblePrefixLen)
+	next, err := d.reader.Peek(longestPossiblePrefixLen)
 	if err != nil {
 		if !errors.Is(err, io.EOF) {
 			return statement{}, err
 		}
-		// Ignore EOF for now.
+		// Ignore EOF.
 	}
 
 	if pr := prefixMsgctxt; bytes.HasPrefix(next, pr) {
 		stmt.statementType = statementTypeMsgctxt
-		p.advanceByte(uint32(len(pr)))
-		if _, err := p.reader.Read(pr); err != nil {
+		d.advanceByte(uint32(len(pr)))
+		if _, err := d.reader.Read(pr); err != nil {
 			return stmt, err
 		}
 
 	} else if pr := prefixMsgidPlural; bytes.HasPrefix(next, pr) {
 		stmt.statementType = statementTypeMsgidPlural
-		p.advanceByte(uint32(len(pr)))
-		if _, err := p.reader.Read(pr); err != nil {
+		d.advanceByte(uint32(len(pr)))
+		if _, err := d.reader.Read(pr); err != nil {
 			return stmt, err
 		}
 
 	} else if pr := prefixMsgid; bytes.HasPrefix(next, pr) {
 		stmt.statementType = statementTypeMsgid
-		p.advanceByte(uint32(len(pr)))
-		if _, err := p.reader.Read(pr); err != nil {
+		d.advanceByte(uint32(len(pr)))
+		if _, err := d.reader.Read(pr); err != nil {
 			return stmt, err
 		}
 
 	} else if pr := prefixMsgstrIndexed; bytes.HasPrefix(next, pr) {
 		stmt.statementType = statementTypeMsgstrIndexed
-		p.advanceByte(uint32(len(pr) - 1))
-		if _, err := p.reader.Read(pr[:len(pr)-1]); err != nil {
+		d.advanceByte(uint32(len(pr) - 1))
+		if _, err := d.reader.Read(pr[:len(pr)-1]); err != nil {
 			return stmt, err
 		}
 
-		index, err := p.readPluralIndex()
+		index, err := d.readPluralIndex()
 		if err != nil {
 			return stmt, err
 		}
@@ -631,40 +681,40 @@ func (p *Decoder) readStatement() (stmt statement, err error) {
 
 	} else if pr := prefixMsgstr; bytes.HasPrefix(next, pr) {
 		stmt.statementType = statementTypeMsgstr
-		p.advanceByte(uint32(len(pr)))
-		if _, err := p.reader.Read(pr); err != nil {
+		d.advanceByte(uint32(len(pr)))
+		if _, err := d.reader.Read(pr); err != nil {
 			return stmt, err
 		}
 
 	} else if bytes.HasPrefix(next, prefixLineBreak) {
 		return statement{}, nil
 	} else {
-		return stmt, p.errSyntax("statement")
+		return stmt, d.errSyntax("statement")
 	}
 
-	strStart := p.pos
-	str, err := p.readStringLiteral()
+	strStart := d.pos
+	str, err := d.readStringLiteral()
 	if err != nil {
 		return statement{}, err
 	}
 
 	if str.Value != "" {
 		stmt.text = StringLiterals{
-			Span:  p.span(strStart),
+			Span:  d.span(strStart),
 			Lines: []StringLiteral{str},
 		}
-		stmt.Span = p.span(start)
+		stmt.Span = d.span(start)
 		return stmt, nil
 	}
 
 	// Multi-line
-	b, err := p.peekByte()
+	b, err := d.peekByte()
 	if errors.Is(err, io.EOF) || err == nil && b != '"' {
 		// Empty string
 		stmt.text = StringLiterals{
-			Span: p.span(strStart),
+			Span: d.span(strStart),
 			Lines: []StringLiteral{{
-				Span:  p.span(strStart),
+				Span:  d.span(strStart),
 				Value: "",
 			}},
 		}
@@ -674,47 +724,69 @@ func (p *Decoder) readStatement() (stmt statement, err error) {
 		return statement{}, err
 	}
 
-	strings, err := p.readStringLiterals()
+	strings, err := d.readStringLiterals(obsolete)
 	if err != nil {
 		return stmt, err
 	}
 
 	stmt.text = strings
-	stmt.Span = p.span(start)
+	stmt.Span = d.span(start)
 	return stmt, nil
 }
 
-func (p *Decoder) readStringLiterals() (strings StringLiterals, err error) {
-	start := p.pos
-	next, err := p.reader.Peek(1)
+func (d *Decoder) readStringLiterals(obsolete bool) (strings StringLiterals, err error) {
+	start := d.pos
+
+	if obsolete {
+		if err := d.readPrefixObsolete(); err != nil {
+			return strings, err
+		}
+	}
+
+	next, err := d.reader.Peek(1)
 	if err != nil {
 		return strings, err
 	}
 	if next[0] != '"' {
-		return strings, p.errSyntax("string literal")
+		return strings, d.errSyntax("string literal")
 	}
 
 	for {
-		next, err := p.reader.Peek(1)
+		next, err := d.reader.Peek(1)
 		if err != nil {
 			return strings, err
 		}
 		if next[0] != '"' {
 			break
 		}
-		str, err := p.readStringLiteral()
+		str, err := d.readStringLiteral()
 		if err != nil {
 			return strings, err
 		}
 		strings.Lines = append(strings.Lines, str)
+
+		if obsolete {
+			next, err := d.reader.Peek(2)
+			if err != nil {
+				return strings, err
+			}
+			if string(next) != "#~" {
+				// End of obsolete string literals.
+				return strings, nil
+			}
+
+			if err := d.readPrefixObsolete(); err != nil {
+				return strings, err
+			}
+		}
 	}
-	strings.Span = p.span(start)
+	strings.Span = d.span(start)
 	return strings, nil
 }
 
-func (p *Decoder) readStringLiteral() (StringLiteral, error) {
-	start := p.pos
-	line, _, err := p.reader.ReadLine()
+func (d *Decoder) readStringLiteral() (StringLiteral, error) {
+	start := d.pos
+	line, _, err := d.reader.ReadLine()
 	if err != nil {
 		return StringLiteral{}, err
 	}
@@ -723,118 +795,92 @@ func (p *Decoder) readStringLiteral() (StringLiteral, error) {
 	trimmed := strings.TrimSpace(string(line))
 
 	if len(trimmed) < 2 || trimmed[0] != '"' || trimmed[len(trimmed)-1] != '"' {
-		return StringLiteral{}, p.errSyntax("string literal")
+		return StringLiteral{}, d.errSyntax("string literal")
 	}
 
 	unquoted, err := strconv.Unquote(trimmed)
 	if err != nil {
 		return StringLiteral{}, Error{
-			Pos:      p.pos,
+			Pos:      d.pos,
 			Expected: "string literal",
 			Err:      err,
 		}
 	}
 
-	p.advanceByte(uint32(len(line)))
-	p.advanceLine()
+	d.advanceByte(uint32(len(line)))
+	d.advanceLine()
 	s.Value = unquoted
-	s.Span = p.span(start)
+	s.Span = d.span(start)
 	return s, nil
 }
 
-func (p *Decoder) readPluralIndex() (index uint8, err error) {
-	b, err := p.reader.ReadByte()
+func (d *Decoder) readPluralIndex() (index uint8, err error) {
+	b, err := d.reader.ReadByte()
 	if err != nil {
 		return 0, err
 	}
 	if b != '[' {
-		return 0, p.errSyntax("[")
+		return 0, d.errSyntax("[")
 	}
-	p.advanceByte(1)
+	d.advanceByte(1)
 
-	b, err = p.reader.ReadByte()
+	b, err = d.reader.ReadByte()
 	if err != nil {
 		return 0, err
 	}
 	if b < '0' || b > '9' {
-		return 0, p.errSyntax("index 0-5")
+		return 0, d.errSyntax("index 0-5")
 	}
-	p.advanceByte(1)
+	d.advanceByte(1)
 
 	index = b - '0'
 
-	b, err = p.reader.ReadByte()
+	b, err = d.reader.ReadByte()
 	if err != nil {
 		return 0, err
 	}
 	if b != ']' {
-		return 0, p.errSyntax("]")
+		return 0, d.errSyntax("]")
 	}
-	p.advanceByte(1)
+	d.advanceByte(1)
 
-	b, err = p.reader.ReadByte()
+	b, err = d.reader.ReadByte()
 	if err != nil {
 		return 0, err
 	}
 	if b != ' ' {
-		return 0, p.errSyntax("space")
+		return 0, d.errSyntax("space")
 	}
-	p.advanceByte(1)
+	d.advanceByte(1)
 
 	return index, nil
 }
 
-func (p *Decoder) peekByte() (byte, error) {
-	b, err := p.reader.ReadByte()
+func (d *Decoder) peekByte() (byte, error) {
+	b, err := d.reader.ReadByte()
 	if err != nil {
 		return 0, err
 	}
-	if err := p.reader.UnreadByte(); err != nil {
+	if err := d.reader.UnreadByte(); err != nil {
 		panic(err) // Should never happen.
 	}
 	return b, nil
 }
 
-func parseHeader(posLit Position, s string) (h Header, err error) {
-	i := strings.IndexByte(s, ':')
-	if i == -1 {
-		return h, Error{
-			Pos:      posLit,
-			Expected: "colon",
-			Err:      ErrMalformedHeader,
-		}
+func checkHeaderDuplicate(p Position, byName map[string]struct{}, name string) error {
+	if _, ok := byName[name]; ok {
+		return Error{Pos: p, Err: ErrDuplicateHeader}
 	}
-	h.Name = s[:i]
-	s = s[i+1:]
-
-	// Skip spaces
-	for ; len(s) > 0; s = s[1:] {
-		if s[0] == ' ' || s[0] == '\t' {
-			continue
-		}
-		break
-	}
-
-	i = strings.IndexByte(s, '\n')
-	if i == -1 {
-		return h, Error{
-			Pos:      posLit,
-			Expected: "line break",
-			Err:      ErrMalformedHeader,
-		}
-	}
-	h.Value = s[:i]
-
-	return h, nil
+	byName[name] = struct{}{}
+	return nil
 }
 
-func setHeader(p Position, dst *Header, h Header) error {
-	if dst.Name != "" {
-		return Error{
-			Pos: p,
-			Err: ErrDuplicateHeader,
-		}
+func splitHeader(s string) (name, value string) {
+	i := strings.IndexByte(s, ':')
+	if i == -1 {
+		return "", ""
 	}
-	*dst = h
-	return nil
+	name = s[:i]
+	value = strings.TrimSpace(s[i+1:])
+	return name, value
 }
