@@ -1,5 +1,7 @@
 # localize
 
+![Localize Banner](./localize_banner.svg)
+
 Workflow:
 
 1. Define the default texts in your code.
