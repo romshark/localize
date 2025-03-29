@@ -311,6 +311,9 @@ var (
 		"unsupported Content-Type, use \"text/plain; charset=UTF-8\"")
 	ErrUnsupportedMIMEVersion = errors.New(
 		"unsupported MIME-Version, use \"1.0\"")
+	ErrWrongPluralForm = errors.New(
+		"wrong plural form not specified by Plural-Form header",
+	)
 )
 
 // FmtCodeRef formats a code reference comment.

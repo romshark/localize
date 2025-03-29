@@ -28,6 +28,8 @@ type Decoder struct {
 	// before a new directive is read from reader because it was actually
 	// determined as the start of a new message while reading a message.
 	pending directive
+
+	pluralsN uint8
 }
 
 func NewDecoder() *Decoder {
@@ -64,6 +66,8 @@ func (d *Decoder) decode(fileName string, r io.Reader, template bool) (*File, er
 	if err != nil {
 		return nil, err
 	}
+
+	d.pluralsN = f.Head.PluralForms.N
 
 	for {
 		err := d.readOptionalWhitespace()
@@ -451,51 +455,41 @@ func (d *Decoder) readMessage() (m Message, err error) {
 	var previous directiveType
 
 	defer func() {
-		if errors.Is(err, errEndOfMessage) {
-			switch previous {
-			case 0:
-				err = d.err("msgctxt or msgid")
-			case directiveTypeMsgctxt:
-				err = d.err("msgid")
-			case directiveTypeMsgid:
-				err = d.err("msgid_plural or msgstr")
-			case directiveTypeMsgidPlural:
-				err = d.err("msgstr")
-			case directiveTypeMsgstr:
-				err = nil
-			case directiveTypeMsgstrIndexed:
-				// TODO: Check whether an index was still missing
-				err = nil
-			default:
-				err = nil
+		endOfMsg := errors.Is(err, errEndOfMessage)
+		endOfFile := errors.Is(err, io.EOF)
+		if !endOfMsg && !endOfFile {
+			return
+		}
+		causeErr := ErrUnexpectedToken
+		if endOfFile {
+			causeErr = io.ErrUnexpectedEOF
+		}
+		switch previous {
+		case 0:
+			err = Error{Pos: d.pos, Expected: "msgctxt or msgid", Err: causeErr}
+		case directiveTypeMsgctxt:
+			err = Error{Pos: d.pos, Expected: "msgid", Err: causeErr}
+		case directiveTypeMsgid:
+			err = Error{
+				Pos: d.pos, Expected: "msgid_plural or msgstr",
+				Err: causeErr,
 			}
-		} else if errors.Is(err, io.EOF) {
-			switch previous {
-			case 0:
+		case directiveTypeMsgidPlural:
+			err = Error{Pos: d.pos, Expected: "msgstr", Err: causeErr}
+		case directiveTypeMsgstr:
+			err = nil
+		case directiveTypeMsgstrIndexed:
+			if previousPluralFormIndex+1 < d.pluralsN {
 				err = Error{
-					Pos: d.pos, Expected: "msgctxt or msgid",
-					Err: io.ErrUnexpectedEOF,
+					Pos:      d.pos,
+					Expected: fmt.Sprintf("msgstr[%d]", previousPluralFormIndex+1),
+					Err:      causeErr,
 				}
-			case directiveTypeMsgctxt:
-				err = Error{
-					Pos: d.pos, Expected: "msgid",
-					Err: io.ErrUnexpectedEOF,
-				}
-			case directiveTypeMsgid:
-				err = Error{
-					Pos: d.pos, Expected: "msgid_plural or msgstr",
-					Err: io.ErrUnexpectedEOF,
-				}
-			case directiveTypeMsgidPlural:
-				err = Error{Pos: d.pos, Expected: "msgstr", Err: io.ErrUnexpectedEOF}
-			case directiveTypeMsgstr:
-				err = nil
-			case directiveTypeMsgstrIndexed:
-				// TODO: Check whether an index was still missing
-				err = nil
-			default:
-				err = nil
+				return
 			}
+			err = nil
+		default:
+			err = nil
 		}
 	}()
 
@@ -939,6 +933,9 @@ func splitHeader(s string) (name, value string) {
 func (d *Decoder) checkMsgstrIndexedAgainstPrevious(
 	currentIndex, previousIndex uint8,
 ) error {
+	if currentIndex+1 > d.pluralsN {
+		return ErrWrongPluralForm
+	}
 	if currentIndex != previousIndex+1 {
 		switch previousIndex {
 		case 0:
