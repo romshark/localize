@@ -81,8 +81,8 @@ func (e Encoder) encode(f *File, w io.Writer, template bool) error {
 		f.Head.ContentTransferEncoding); err != nil {
 		return err
 	}
-	if _, err := fmt.Fprintf(w, "\"Plural-Forms: %s\\n\"\n",
-		f.Head.PluralForms); err != nil {
+	if _, err := fmt.Fprintf(w, "\"Plural-Forms: nplurals=%d; plural=%s;\\n\"\n",
+		f.Head.PluralForms.N, f.Head.PluralForms.Expression); err != nil {
 		return err
 	}
 	for _, h := range f.Head.NonStandard {
@@ -260,7 +260,7 @@ func (e *Encoder) printDirective(
 
 func hasNextNonObsolete(msgs []Message, template bool) bool {
 	for i := range msgs {
-		if !(template && msgs[i].Obsolete) {
+		if !template || !msgs[i].Obsolete {
 			return true
 		}
 	}

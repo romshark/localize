@@ -79,7 +79,10 @@ func (c *Collection) MakePO() gettext.FilePO {
 			panic(fmt.Errorf("unsupported locale: %v", c.Locale))
 		}
 	}
-	h.PluralForms = pluralForms.GettextPluralForms
+	h.PluralForms = gettext.HeaderPluralForms{
+		N:          h.PluralForms.N,
+		Expression: pluralForms.GettextFormula,
+	}
 
 	if c.Header != nil {
 		for _, line := range c.Header {

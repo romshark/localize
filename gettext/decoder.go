@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"mime"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -401,14 +402,14 @@ func (d *Decoder) parseHead(m Message, template bool) (h FileHead, err error) {
 			case "8bit":
 				// OK
 			default:
-				return h, Error{
-					Pos: pos,
-					Err: ErrUnsupportedContentTransferEncoding,
-				}
+				return h, Error{Pos: pos, Err: ErrUnsupportedContentTransferEncoding}
 			}
 		case "Plural-Forms":
-			h.PluralForms = value
-			// TODO: validate
+			n, expr, err := parsePluralFormsHeader(value)
+			if err != nil {
+				return h, Error{Pos: pos, Err: err}
+			}
+			h.PluralForms = HeaderPluralForms{N: n, Expression: expr}
 		default:
 			if strings.HasPrefix(name, "X-") {
 				for _, nsh := range h.NonStandard {
@@ -955,4 +956,20 @@ func (d *Decoder) checkMsgstrIndexedAgainstPrevious(
 		}
 	}
 	return nil
+}
+
+var regexpPluralFormsHeaderVal = regexp.MustCompile(
+	`nplurals\s*=\s*(\d+)\s*;\s*plural\s*=\s*([^;]+)\s*;`,
+)
+
+func parsePluralFormsHeader(s string) (n uint8, expression string, err error) {
+	matches := regexpPluralFormsHeaderVal.FindStringSubmatch(s)
+	if len(matches) != 3 {
+		return 0, "", ErrMalformedHeaderPluralForms
+	}
+	np, err := strconv.ParseUint(matches[1], 10, 8)
+	if err != nil {
+		return 0, "", fmt.Errorf("%w: %w", ErrMalformedHeaderPluralForms, err)
+	}
+	return uint8(np), matches[2], nil
 }

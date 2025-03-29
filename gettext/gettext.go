@@ -222,7 +222,7 @@ type FileHead struct {
 	MIMEVersion             string
 	ContentType             string
 	ContentTransferEncoding string
-	PluralForms             string
+	PluralForms             HeaderPluralForms
 	NonStandard             []XHeader
 }
 
@@ -238,6 +238,11 @@ func (f FileHead) Clone() FileHead {
 }
 
 type XHeader struct{ Name, Value string }
+
+type HeaderPluralForms struct {
+	N          uint8
+	Expression string
+}
 
 type HeaderLanguage struct {
 	Value  string
@@ -290,10 +295,11 @@ func (e Error) Error() string {
 }
 
 var (
-	ErrUnexpectedToken         = errors.New("found unexpected token")
-	ErrMalformedHeader         = errors.New("malformed header")
-	ErrDuplicateHeader         = errors.New("duplicate header")
-	ErrMalformedHeaderLanguage = errors.New(
+	ErrUnexpectedToken            = errors.New("found unexpected token")
+	ErrMalformedHeader            = errors.New("malformed header")
+	ErrDuplicateHeader            = errors.New("duplicate header")
+	ErrMalformedHeaderPluralForms = errors.New("malformed Plural-Forms header")
+	ErrMalformedHeaderLanguage    = errors.New(
 		"malformed Language header, must be BCP 47")
 	ErrLanguageInTemplate = errors.New(
 		"header Language must be kept empty in .pot file")
