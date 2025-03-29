@@ -130,9 +130,12 @@ func (l StringLiterals) String() string {
 
 // Clone returns a deep copy of s.
 func (s StringLiterals) Clone() StringLiterals {
+	if s.Lines == nil {
+		return StringLiterals{Span: s.Span}
+	}
 	lines := make([]StringLiteral, len(s.Lines))
 	copy(lines, s.Lines)
-	return StringLiterals{Lines: lines}
+	return StringLiterals{Span: s.Span, Lines: lines}
 }
 
 type StringLiteral struct {
@@ -227,8 +230,10 @@ type FileHead struct {
 func (f FileHead) Clone() FileHead {
 	cp := f
 	cp.HeadComments = f.HeadComments.Clone()
-	cp.NonStandard = make([]XHeader, len(f.NonStandard))
-	copy(cp.NonStandard, f.NonStandard)
+	if f.NonStandard != nil {
+		cp.NonStandard = make([]XHeader, len(f.NonStandard))
+		copy(cp.NonStandard, f.NonStandard)
+	}
 	return cp
 }
 
@@ -246,9 +251,12 @@ type Comments struct {
 
 // Clone returns a deep copy of c.
 func (c Comments) Clone() Comments {
+	if c.Text == nil {
+		return Comments{Span: c.Span}
+	}
 	text := make([]Comment, len(c.Text))
 	copy(text, c.Text)
-	return Comments{Text: text}
+	return Comments{Span: c.Span, Text: text}
 }
 
 type CommentType uint8

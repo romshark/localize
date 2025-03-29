@@ -46,6 +46,9 @@ func TestDecodeEncode(t *testing.T) {
 			po, err := dec.DecodePO(files.PO, fdPO)
 			require.NoError(t, err)
 
+			// Test cloning.
+			require.Equal(t, po.File, po.Clone())
+
 			// Encode `.po` model to file.
 			var bufPO bytes.Buffer
 			enc := gettext.Encoder{}
