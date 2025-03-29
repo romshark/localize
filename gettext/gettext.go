@@ -298,3 +298,8 @@ var (
 	ErrUnsupportedMIMEVersion = errors.New(
 		"unsupported MIME-Version, use \"1.0\"")
 )
+
+// FmtCodeRef formats a code reference comment.
+func FmtCodeRef(file string, line int) string {
+	return fmt.Sprintf("%s:%d", file, line)
+}

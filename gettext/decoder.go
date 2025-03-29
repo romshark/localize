@@ -13,13 +13,20 @@ import (
 	"golang.org/x/text/language"
 )
 
-func (d *Decoder) errSyntax(expected string) Error {
+func (d *Decoder) err(expected string) Error {
 	return Error{Pos: d.pos, Expected: expected}
 }
 
 type Decoder struct {
 	reader *bufio.Reader
 	pos    Position
+
+	// pending is the a pending directive that was successfuly read from
+	// reader but wasn't actually consumed by a message reader yet.
+	// If pending.directiveType != 0 it must be used in readMessage
+	// before a new directive is read from reader because it was actually
+	// determined as the start of a new message while reading a message.
+	pending directive
 }
 
 func NewDecoder() *Decoder {
@@ -41,9 +48,12 @@ func (d *Decoder) DecodePOT(fileName string, r io.Reader) (FilePOT, error) {
 }
 
 func (d *Decoder) decode(fileName string, r io.Reader, template bool) (*File, error) {
+	// Reset the decoder.
 	d.reader.Reset(r)
 	d.pos.Filename, d.pos.Index, d.pos.Line, d.pos.Column = fileName, 0, 1, 1
+	d.pending.directiveType = 0
 
+	// Start by reading the head message.
 	var f File
 	mHead, err := d.readMessage()
 	if err != nil {
@@ -70,18 +80,27 @@ func (d *Decoder) decode(fileName string, r io.Reader, template bool) (*File, er
 		f.Messages.List = append(f.Messages.List, m)
 	}
 
-	return &f, nil
-}
-
-func (d *Decoder) advance(str []byte) {
-	for _, c := range str {
-		switch c {
-		case '\n':
-			d.advanceLine()
-		default:
-			d.advanceByte(1)
+	// If a message is still pending then we encountered an unexpected EOF.
+	switch d.pending.directiveType {
+	case 0:
+		// OK, no pending message.
+	case directiveTypeMsgctxt:
+		return nil, d.err("msgid")
+	case directiveTypeMsgid:
+		return nil, d.err("msgid_plural or msgstr")
+	case directiveTypeMsgidPlural:
+		return nil, d.err("msgstr[0]")
+	case directiveTypeMsgstr:
+		return nil, d.err("msgid or mstctxt")
+	case directiveTypeMsgstrIndexed:
+		if d.pending.pluralFormIndex < 5 {
+			return nil, d.err(fmt.Sprintf("msgstr[%d]",
+				d.pending.pluralFormIndex+1))
 		}
+		return nil, d.err("msgid or mstctxt")
 	}
+
+	return &f, nil
 }
 
 func (d *Decoder) advanceByte(n uint32) {
@@ -137,8 +156,6 @@ func (d *Decoder) readComment() (Comment, error) {
 		return Comment{}, nil // Not a comment
 	}
 
-	d.advanceByte(1)
-
 	var c Comment
 	b, err = d.reader.ReadByte()
 	if err != nil {
@@ -148,54 +165,60 @@ func (d *Decoder) readComment() (Comment, error) {
 	case '\n':
 		// Empty comment
 		c.Type = CommentTypeTranslator
+		d.advanceByte(1)
 		d.advanceLine()
 		c.Span = d.span(start)
 		return c, nil
 	case ' ':
 		c.Type = CommentTypeTranslator
-		d.advanceByte(1)
+		d.advanceByte(2)
 	case '.':
 		c.Type = CommentTypeExtracted
-		d.advanceByte(1)
+		d.advanceByte(2)
 		b, err = d.reader.ReadByte()
 		if err != nil {
 			return Comment{}, err
 		}
 		if b != ' ' {
-			return Comment{}, d.errSyntax("space")
+			return Comment{}, d.err("space")
 		}
 		d.advanceByte(1)
 	case ':':
 		c.Type = CommentTypeReference
-		d.advanceByte(1)
+		d.advanceByte(2)
 		b, err = d.reader.ReadByte()
 		if err != nil {
 			return Comment{}, err
 		}
 		if b != ' ' {
-			return Comment{}, d.errSyntax("space")
+			return Comment{}, d.err("space")
 		}
 		d.advanceByte(1)
 	case ',':
 		c.Type = CommentTypeFlag
-		d.advanceByte(1)
+		d.advanceByte(2)
 		b, err = d.reader.ReadByte()
 		if err != nil {
 			return Comment{}, err
 		}
 		if b != ' ' {
-			return Comment{}, d.errSyntax("space")
+			return Comment{}, d.err("space")
 		}
 		d.advanceByte(1)
 	case '|':
 		// Previous is unsupported yet.
+		d.advanceByte(1)
 		line, _, err := d.reader.ReadLine()
 		if err != nil {
 			return Comment{}, err
 		}
-		d.advance(line)
+		d.advanceByte(uint32(len(line)))
+		d.advanceLine()
 	default:
-		return Comment{}, d.errSyntax("space")
+		if err := d.reader.UnreadByte(); err != nil {
+			panic(err) // Should never happen
+		}
+		return Comment{}, nil // Not a comment
 	}
 
 	line, _, err := d.reader.ReadLine()
@@ -203,7 +226,8 @@ func (d *Decoder) readComment() (Comment, error) {
 		return Comment{}, err
 	}
 
-	d.advance(line)
+	d.advanceByte(uint32(len(line)))
+	d.advanceLine()
 	c.Span = d.span(start)
 	c.Value = string(line)
 	return c, nil
@@ -213,19 +237,20 @@ func (d *Decoder) readComments(obsolete bool) (Comments, error) {
 	start := d.pos
 	var l Comments
 	for {
+		next, err := d.reader.Peek(4)
+		if err != nil {
+			return Comments{}, err
+		}
 		if obsolete {
-			next, err := d.reader.Peek(4)
-			if err != nil {
-				return Comments{}, err
-			}
 			if string(next) != "#~ #" {
 				// Not a comment on an obsolete message.
 				return l, nil
 			}
-
 			if err := d.readPrefixObsolete(); err != nil {
 				return Comments{}, err
 			}
+		} else if len(next) > 1 && string(next[:2]) == "#~" {
+			return Comments{}, errEndOfMessage
 		}
 
 		c, err := d.readComment()
@@ -247,7 +272,7 @@ func (d *Decoder) readPrefixObsolete() error {
 		return err
 	}
 	if b != '#' {
-		return d.errSyntax("#")
+		return d.err("#")
 	}
 	d.advanceByte(1)
 
@@ -256,7 +281,7 @@ func (d *Decoder) readPrefixObsolete() error {
 		return err
 	}
 	if b != '~' {
-		return d.errSyntax("~")
+		return d.err("~")
 	}
 	d.advanceByte(1)
 
@@ -265,7 +290,7 @@ func (d *Decoder) readPrefixObsolete() error {
 		return err
 	}
 	if b != ' ' {
-		return d.errSyntax("space")
+		return d.err("space")
 	}
 	d.advanceByte(1)
 
@@ -418,150 +443,194 @@ var (
 	prefixMsgidPlural   = []byte("msgid_plural ")
 	prefixMsgstr        = []byte("msgstr ")
 	prefixMsgstrIndexed = []byte("msgstr[")
-	prefixLineBreak     = []byte("\n")
 )
 
 func (d *Decoder) readMessage() (m Message, err error) {
 	start := d.pos
-
-	var previous statement
 	next, err := d.reader.Peek(2)
 	m.Obsolete = err == nil && string(next) == "#~"
 
+	var previousPluralFormIndex uint8
+	var previous directiveType
+
 LOOP:
 	for {
-		stmt, err := d.readStatement(m.Obsolete)
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				switch previous.statementType {
+		if m.Obsolete {
+			next, err := d.reader.Peek(2)
+			if err != nil {
+				return m, err
+			}
+			if string(next) != "#~" {
+				// End of obsolete message
+				switch previous {
 				case 0:
-					return m, Error{
-						Pos:      d.pos,
-						Expected: "msgctxt or msgid",
-						Err:      io.ErrUnexpectedEOF,
-					}
-				case statementTypeMsgctxt:
-					return m, Error{
-						Pos:      d.pos,
-						Expected: "msgid",
-						Err:      io.ErrUnexpectedEOF,
-					}
-				case statementTypeMsgid:
-					return m, Error{
-						Pos:      d.pos,
-						Expected: "msgid_plural or msgstr",
-						Err:      io.ErrUnexpectedEOF,
-					}
-				case statementTypeMsgidPlural:
-					return m, Error{
-						Pos:      d.pos,
-						Expected: "msgstr",
-						Err:      io.ErrUnexpectedEOF,
-					}
-				case statementTypeMsgstr:
+					return m, d.err("msgctxt or msgid")
+				case directiveTypeMsgctxt:
+					return m, d.err("msgid")
+				case directiveTypeMsgid:
+					return m, d.err("msgid_plural or msgstr")
+				case directiveTypeMsgidPlural:
+					return m, d.err("msgstr")
+				case directiveTypeMsgstr:
 					// TODO: Check whether msgstr[n] was expected
 					return m, nil
-				case statementTypeMsgstrIndexed:
+				case directiveTypeMsgstrIndexed:
 					// TODO: Check whether an index was still missing
 					return m, nil
 				}
+				return m, nil
 			}
-			return m, err
+		}
+		if err := d.readOptionalWhitespace(); err != nil {
+			if !errors.Is(err, io.EOF) {
+				return m, err
+			}
+			// Ignore EOF.
 		}
 
-		// TODO: return correct expectations taking
-		// into account the number of plural forms.
-		switch stmt.statementType {
+		var dir directive
+		if d.pending.directiveType == 0 {
+			dir, err = d.readDirective(m.Obsolete)
+			if err != nil {
+				if errors.Is(err, errEndOfMessage) {
+					switch previous {
+					case 0:
+						return m, d.err("msgctxt or msgid")
+					case directiveTypeMsgctxt:
+						return m, d.err("msgid")
+					case directiveTypeMsgid:
+						return m, d.err("msgid_plural or msgstr")
+					case directiveTypeMsgidPlural:
+						return m, d.err("msgstr")
+					case directiveTypeMsgstr:
+						// TODO: Check whether msgstr[n] was expected
+						return m, nil
+					case directiveTypeMsgstrIndexed:
+						// TODO: Check whether an index was still missing
+						return m, nil
+					}
+					return m, nil
+				}
+				if errors.Is(err, io.EOF) {
+					switch previous {
+					case 0:
+						return m, Error{
+							Pos:      d.pos,
+							Expected: "msgctxt or msgid",
+							Err:      io.ErrUnexpectedEOF,
+						}
+					case directiveTypeMsgctxt:
+						return m, Error{
+							Pos:      d.pos,
+							Expected: "msgid",
+							Err:      io.ErrUnexpectedEOF,
+						}
+					case directiveTypeMsgid:
+						return m, Error{
+							Pos:      d.pos,
+							Expected: "msgid_plural or msgstr",
+							Err:      io.ErrUnexpectedEOF,
+						}
+					case directiveTypeMsgidPlural:
+						return m, Error{
+							Pos:      d.pos,
+							Expected: "msgstr",
+							Err:      io.ErrUnexpectedEOF,
+						}
+					case directiveTypeMsgstr:
+						// TODO: Check whether msgstr[n] was expected
+						return m, nil
+					case directiveTypeMsgstrIndexed:
+						// TODO: Check whether an index was still missing
+						return m, nil
+					}
+				}
+				return m, err
+			}
+		} else {
+			// Consume pending.
+			dir = d.pending
+			d.pending.directiveType = 0
+		}
+
+		switch dir.directiveType {
 		case 0:
 			break LOOP
-		case statementTypeMsgctxt:
-			switch previous.statementType {
+		case directiveTypeMsgctxt:
+			switch previous {
 			case 0:
-				m.Msgctxt.Span = stmt.Span
-				m.Msgctxt.Comments = stmt.comments
-				m.Msgctxt.Text = stmt.text
-			case statementTypeMsgctxt:
-				return m, d.errSyntax("msgid")
-			case statementTypeMsgid:
-				return m, d.errSyntax("msgstr or msgid_plural")
-			case statementTypeMsgidPlural:
-				return m, d.errSyntax("msgstr[0]")
-			case statementTypeMsgstr:
-				return m, d.errSyntax("msgctxt or msgid")
-			case statementTypeMsgstrIndexed:
-				if stmt.pluralFormIndex <= previous.pluralFormIndex {
-					return m, d.errSyntax(fmt.Sprintf("msgstr[%d]",
-						previous.pluralFormIndex+1))
+				// msgctxt is a the start of a message.
+				m.Msgctxt.Span = dir.Span
+				m.Msgctxt.Comments = dir.comments
+				m.Msgctxt.Text = dir.text
+			case directiveTypeMsgctxt:
+				return m, d.err("msgid")
+			case directiveTypeMsgid:
+				return m, d.err("msgstr or msgid_plural")
+			case directiveTypeMsgidPlural:
+				return m, d.err("msgstr[0]")
+			case directiveTypeMsgstr, directiveTypeMsgstrIndexed:
+				// End of message is detected when
+				// msgctxt follows msgstr or msgstr[index].
+				d.pending = dir
+				return m, nil
+			}
+		case directiveTypeMsgid:
+			switch previous {
+			case 0, directiveTypeMsgctxt:
+				// msgid is either at the start of a message or follows msgctxt.
+				m.Msgid.Span = dir.Span
+				m.Msgid.Comments = dir.comments
+				m.Msgid.Text = dir.text
+			case directiveTypeMsgidPlural:
+				return m, d.err("msgstr[0]")
+			case directiveTypeMsgstr, directiveTypeMsgstrIndexed:
+				// End of message is detected when
+				// msgid follows msgstr or msgstr[index].
+				d.pending = dir
+				return m, nil
+			}
+		case directiveTypeMsgidPlural:
+			switch previous {
+			case directiveTypeMsgid:
+				// msgid_plural always follows msgid.
+				m.MsgidPlural.Span = dir.Span
+				m.MsgidPlural.Comments = dir.comments
+				m.MsgidPlural.Text = dir.text
+			default:
+				return m, d.err("msgid")
+			}
+		case directiveTypeMsgstr:
+			switch previous {
+			case directiveTypeMsgid:
+				// msgstr always follows msgid.
+				m.Msgstr.Span = dir.Span
+				m.Msgstr.Comments = dir.comments
+				m.Msgstr.Text = dir.text
+			default:
+				return m, d.err("msgid")
+			}
+		case directiveTypeMsgstrIndexed:
+			switch previous {
+			case 0,
+				directiveTypeMsgctxt,
+				directiveTypeMsgid,
+				directiveTypeMsgstr:
+				return m, d.err("msgid_plural")
+			case directiveTypeMsgidPlural:
+				// msgstr[index] follows msgid_plural.
+				if dir.pluralFormIndex != 0 {
+					return m, d.err("msgstr[0]")
 				}
-			}
-		case statementTypeMsgid:
-			switch previous.statementType {
-			case 0, statementTypeMsgctxt:
-				m.Msgid.Span = stmt.Span
-				m.Msgid.Comments = stmt.comments
-				m.Msgid.Text = stmt.text
-			case statementTypeMsgidPlural:
-				return m, d.errSyntax("msgstr[0]")
-			case statementTypeMsgstr:
-				return m, d.errSyntax("msgctxt or msgid")
-			case statementTypeMsgstrIndexed:
-				if stmt.pluralFormIndex <= previous.pluralFormIndex {
-					return m, d.errSyntax(fmt.Sprintf("msgstr[%d]",
-						previous.pluralFormIndex+1))
-				}
-			}
-		case statementTypeMsgidPlural:
-			switch previous.statementType {
-			case 0:
-				return m, d.errSyntax("msgctxt or msgid")
-			case statementTypeMsgctxt:
-				return m, d.errSyntax("msgid")
-			case statementTypeMsgid:
-				m.MsgidPlural.Span = stmt.Span
-				m.MsgidPlural.Comments = stmt.comments
-				m.MsgidPlural.Text = stmt.text
-			case statementTypeMsgidPlural:
-				return m, d.errSyntax("msgstr[0]")
-			case statementTypeMsgstr:
-				return m, d.errSyntax("msgctxt or msgid")
-			case statementTypeMsgstrIndexed:
-				if stmt.pluralFormIndex <= previous.pluralFormIndex {
-					return m, d.errSyntax(fmt.Sprintf("msgstr[%d]",
-						previous.pluralFormIndex+1))
-				}
-			}
-		case statementTypeMsgstr:
-			switch previous.statementType {
-			case 0:
-				return m, d.errSyntax("msgctxt or msgid")
-			case statementTypeMsgctxt:
-				return m, d.errSyntax("msgid")
-			case statementTypeMsgid:
-				m.Msgstr.Span = stmt.Span
-				m.Msgstr.Comments = stmt.comments
-				m.Msgstr.Text = stmt.text
-			case statementTypeMsgidPlural:
-				return m, d.errSyntax("msgstr[0]")
-			case statementTypeMsgstr:
-				return m, d.errSyntax("msgctxt or msgid")
-			case statementTypeMsgstrIndexed:
-				return m, d.errSyntax("msgstr[n] or msgctxt or msgid")
-			}
-		case statementTypeMsgstrIndexed:
-			switch previous.statementType {
-			case 0:
-				return m, d.errSyntax("msgctxt or msgid")
-			case statementTypeMsgctxt:
-				return m, d.errSyntax("msgid")
-			case statementTypeMsgid:
-				return m, d.errSyntax("msgid_plural or msgstr")
-			case statementTypeMsgstr:
-				return m, d.errSyntax("msgctxt or msgid")
-			case statementTypeMsgidPlural, statementTypeMsgstrIndexed:
+				m.Msgstr0.Span = dir.Span
+				m.Msgstr0.Comments = dir.comments
+				m.Msgstr0.Text = dir.text
+			case directiveTypeMsgstrIndexed:
+				// msgstr[index] follows msgstr[index]
 				var msg *Msgstr
-				switch stmt.pluralFormIndex {
+				switch dir.pluralFormIndex {
 				case 0:
-					msg = &m.Msgstr0
+					return m, d.err("msgid_plural")
 				case 1:
 					msg = &m.Msgstr1
 				case 2:
@@ -574,65 +643,68 @@ LOOP:
 					msg = &m.Msgstr5
 				default:
 					panic(fmt.Errorf("unsupported plural form index: %d",
-						stmt.pluralFormIndex)) // Should never happen.
+						dir.pluralFormIndex)) // Should never happen.
 				}
-				if previous.statementType == statementTypeMsgstrIndexed &&
-					stmt.pluralFormIndex <= previous.pluralFormIndex {
-					return m, d.errSyntax(fmt.Sprintf("msgstr[%d]",
-						previous.pluralFormIndex+1))
+				if err = d.checkMsgstrIndexedAgainstPrevious(
+					dir.pluralFormIndex, previousPluralFormIndex); err != nil {
+					return m, err
 				}
-				msg.Span = stmt.Span
-				msg.Comments = stmt.comments
-				msg.Text = stmt.text
+				msg.Span = dir.Span
+				msg.Comments = dir.comments
+				msg.Text = dir.text
 			}
 		}
-		previous = stmt
+
+		previousPluralFormIndex = dir.pluralFormIndex
+		previous = dir.directiveType
 	}
 
 	m.Span = d.span(start)
 	return m, nil
 }
 
-type statementType uint8
+type directiveType uint8
 
 const (
-	_ statementType = iota
+	_ directiveType = iota
 
-	statementTypeMsgctxt       // msgctxt
-	statementTypeMsgid         // msgid
-	statementTypeMsgidPlural   // msgid_plural
-	statementTypeMsgstr        // msgstr
-	statementTypeMsgstrIndexed // msgstr[%d]
+	directiveTypeMsgctxt       // msgctxt
+	directiveTypeMsgid         // msgid
+	directiveTypeMsgidPlural   // msgid_plural
+	directiveTypeMsgstr        // msgstr
+	directiveTypeMsgstrIndexed // msgstr[%d]
 )
 
-type statement struct {
+type directive struct {
 	Span
 	comments        Comments
 	text            StringLiterals
-	statementType   statementType
+	directiveType   directiveType
 	pluralFormIndex uint8
 }
 
-// readStatement parses either msgctxt, msgid, msgid_plural and msgstr[%d]
-func (d *Decoder) readStatement(obsolete bool) (stmt statement, err error) {
+var errEndOfMessage = errors.New("end of message")
+
+// readDirective parses either msgctxt, msgid, msgid_plural and msgstr[%d]
+func (d *Decoder) readDirective(obsolete bool) (dir directive, err error) {
 	start := d.pos
 
 	comments, err := d.readComments(obsolete)
 	if err != nil {
-		return statement{}, err
+		return directive{}, err
 	}
-	stmt.comments = comments
+	dir.comments = comments
 
 	if obsolete {
 		b, err := d.peekByte()
 		if err != nil {
-			return statement{}, err
+			return directive{}, err
 		}
-		if b == '\n' {
-			return statement{}, nil
+		if b != '#' {
+			return directive{}, errEndOfMessage
 		}
 		if err := d.readPrefixObsolete(); err != nil {
-			return statement{}, err
+			return directive{}, err
 		}
 	}
 
@@ -640,98 +712,96 @@ func (d *Decoder) readStatement(obsolete bool) (stmt statement, err error) {
 	next, err := d.reader.Peek(longestPossiblePrefixLen)
 	if err != nil {
 		if !errors.Is(err, io.EOF) {
-			return statement{}, err
+			return directive{}, err
 		}
 		// Ignore EOF.
 	}
 
 	if pr := prefixMsgctxt; bytes.HasPrefix(next, pr) {
-		stmt.statementType = statementTypeMsgctxt
+		dir.directiveType = directiveTypeMsgctxt
 		d.advanceByte(uint32(len(pr)))
 		if _, err := d.reader.Read(pr); err != nil {
-			return stmt, err
+			return dir, err
 		}
 
 	} else if pr := prefixMsgidPlural; bytes.HasPrefix(next, pr) {
-		stmt.statementType = statementTypeMsgidPlural
+		dir.directiveType = directiveTypeMsgidPlural
 		d.advanceByte(uint32(len(pr)))
 		if _, err := d.reader.Read(pr); err != nil {
-			return stmt, err
+			return dir, err
 		}
 
 	} else if pr := prefixMsgid; bytes.HasPrefix(next, pr) {
-		stmt.statementType = statementTypeMsgid
+		dir.directiveType = directiveTypeMsgid
 		d.advanceByte(uint32(len(pr)))
 		if _, err := d.reader.Read(pr); err != nil {
-			return stmt, err
+			return dir, err
 		}
 
 	} else if pr := prefixMsgstrIndexed; bytes.HasPrefix(next, pr) {
-		stmt.statementType = statementTypeMsgstrIndexed
+		dir.directiveType = directiveTypeMsgstrIndexed
 		d.advanceByte(uint32(len(pr) - 1))
 		if _, err := d.reader.Read(pr[:len(pr)-1]); err != nil {
-			return stmt, err
+			return dir, err
 		}
 
 		index, err := d.readPluralIndex()
 		if err != nil {
-			return stmt, err
+			return dir, err
 		}
-		stmt.pluralFormIndex = index
+		dir.pluralFormIndex = index
 
 	} else if pr := prefixMsgstr; bytes.HasPrefix(next, pr) {
-		stmt.statementType = statementTypeMsgstr
+		dir.directiveType = directiveTypeMsgstr
 		d.advanceByte(uint32(len(pr)))
 		if _, err := d.reader.Read(pr); err != nil {
-			return stmt, err
+			return dir, err
 		}
 
-	} else if bytes.HasPrefix(next, prefixLineBreak) {
-		return statement{}, nil
 	} else {
-		return stmt, d.errSyntax("statement")
+		return directive{}, errEndOfMessage
 	}
 
 	strStart := d.pos
 	str, err := d.readStringLiteral()
 	if err != nil {
-		return statement{}, err
+		return directive{}, err
 	}
 
 	if str.Value != "" {
-		stmt.text = StringLiterals{
+		dir.text = StringLiterals{
 			Span:  d.span(strStart),
 			Lines: []StringLiteral{str},
 		}
-		stmt.Span = d.span(start)
-		return stmt, nil
+		dir.Span = d.span(start)
+		return dir, nil
 	}
 
 	// Multi-line
 	b, err := d.peekByte()
 	if errors.Is(err, io.EOF) || err == nil && b != '"' {
 		// Empty string
-		stmt.text = StringLiterals{
+		dir.text = StringLiterals{
 			Span: d.span(strStart),
 			Lines: []StringLiteral{{
 				Span:  d.span(strStart),
 				Value: "",
 			}},
 		}
-		return stmt, nil
+		return dir, nil
 	}
 	if err != nil {
-		return statement{}, err
+		return directive{}, err
 	}
 
 	strings, err := d.readStringLiterals(obsolete)
 	if err != nil {
-		return stmt, err
+		return dir, err
 	}
 
-	stmt.text = strings
-	stmt.Span = d.span(start)
-	return stmt, nil
+	dir.text = strings
+	dir.Span = d.span(start)
+	return dir, nil
 }
 
 func (d *Decoder) readStringLiterals(obsolete bool) (strings StringLiterals, err error) {
@@ -748,7 +818,7 @@ func (d *Decoder) readStringLiterals(obsolete bool) (strings StringLiterals, err
 		return strings, err
 	}
 	if next[0] != '"' {
-		return strings, d.errSyntax("string literal")
+		return strings, d.err("string literal")
 	}
 
 	for {
@@ -795,7 +865,7 @@ func (d *Decoder) readStringLiteral() (StringLiteral, error) {
 	trimmed := strings.TrimSpace(string(line))
 
 	if len(trimmed) < 2 || trimmed[0] != '"' || trimmed[len(trimmed)-1] != '"' {
-		return StringLiteral{}, d.errSyntax("string literal")
+		return StringLiteral{}, d.err("string literal")
 	}
 
 	unquoted, err := strconv.Unquote(trimmed)
@@ -820,7 +890,7 @@ func (d *Decoder) readPluralIndex() (index uint8, err error) {
 		return 0, err
 	}
 	if b != '[' {
-		return 0, d.errSyntax("[")
+		return 0, d.err("[")
 	}
 	d.advanceByte(1)
 
@@ -829,7 +899,7 @@ func (d *Decoder) readPluralIndex() (index uint8, err error) {
 		return 0, err
 	}
 	if b < '0' || b > '9' {
-		return 0, d.errSyntax("index 0-5")
+		return 0, d.err("index 0-5")
 	}
 	d.advanceByte(1)
 
@@ -840,7 +910,7 @@ func (d *Decoder) readPluralIndex() (index uint8, err error) {
 		return 0, err
 	}
 	if b != ']' {
-		return 0, d.errSyntax("]")
+		return 0, d.err("]")
 	}
 	d.advanceByte(1)
 
@@ -849,7 +919,7 @@ func (d *Decoder) readPluralIndex() (index uint8, err error) {
 		return 0, err
 	}
 	if b != ' ' {
-		return 0, d.errSyntax("space")
+		return 0, d.err("space")
 	}
 	d.advanceByte(1)
 
@@ -883,4 +953,26 @@ func splitHeader(s string) (name, value string) {
 	name = s[:i]
 	value = strings.TrimSpace(s[i+1:])
 	return name, value
+}
+
+func (d *Decoder) checkMsgstrIndexedAgainstPrevious(
+	currentIndex, previousIndex uint8,
+) error {
+	if currentIndex != previousIndex+1 {
+		switch previousIndex {
+		case 0:
+			return d.err("msgstr[1]")
+		case 1:
+			return d.err("msgstr[2]")
+		case 2:
+			return d.err("msgstr[3]")
+		case 3:
+			return d.err("msgstr[4]")
+		case 4:
+			return d.err("msgstr[5]")
+		case 5:
+			return d.err("msgctxt or msgid")
+		}
+	}
+	return nil
 }

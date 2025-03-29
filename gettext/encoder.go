@@ -100,52 +100,52 @@ func (e Encoder) encode(f *File, w io.Writer, template bool) error {
 			continue
 		}
 
-		if err := e.printStatement(
+		if err := e.printDirective(
 			w, "msgctxt", m.Obsolete, m.Msgctxt.Comments, m.Msgctxt.Text,
 		); err != nil {
 			return err
 		}
-		if err := e.printStatement(
+		if err := e.printDirective(
 			w, "msgid", m.Obsolete, m.Msgid.Comments, m.Msgid.Text,
 		); err != nil {
 			return err
 		}
-		if err := e.printStatement(
+		if err := e.printDirective(
 			w, "msgid_plural", m.Obsolete, m.MsgidPlural.Comments, m.MsgidPlural.Text,
 		); err != nil {
 			return err
 		}
-		if err := e.printStatement(
+		if err := e.printDirective(
 			w, "msgstr", m.Obsolete, m.Msgstr.Comments, m.Msgstr.Text,
 		); err != nil {
 			return err
 		}
-		if err := e.printStatement(
+		if err := e.printDirective(
 			w, "msgstr[0]", m.Obsolete, m.Msgstr0.Comments, m.Msgstr0.Text,
 		); err != nil {
 			return err
 		}
-		if err := e.printStatement(
+		if err := e.printDirective(
 			w, "msgstr[1]", m.Obsolete, m.Msgstr1.Comments, m.Msgstr1.Text,
 		); err != nil {
 			return err
 		}
-		if err := e.printStatement(
+		if err := e.printDirective(
 			w, "msgstr[2]", m.Obsolete, m.Msgstr2.Comments, m.Msgstr2.Text,
 		); err != nil {
 			return err
 		}
-		if err := e.printStatement(
+		if err := e.printDirective(
 			w, "msgstr[3]", m.Obsolete, m.Msgstr3.Comments, m.Msgstr3.Text,
 		); err != nil {
 			return err
 		}
-		if err := e.printStatement(
+		if err := e.printDirective(
 			w, "msgstr[4]", m.Obsolete, m.Msgstr4.Comments, m.Msgstr4.Text,
 		); err != nil {
 			return err
 		}
-		if err := e.printStatement(
+		if err := e.printDirective(
 			w, "msgstr[5]", m.Obsolete, m.Msgstr5.Comments, m.Msgstr5.Text,
 		); err != nil {
 			return err
@@ -215,7 +215,7 @@ func printLines(w io.Writer, prefix, s string) error {
 	return nil
 }
 
-func (e *Encoder) printStatement(
+func (e *Encoder) printDirective(
 	w io.Writer, name string, obsolete bool, comments Comments, text StringLiterals,
 ) error {
 	if len(text.Lines) < 1 {
