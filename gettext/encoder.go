@@ -150,7 +150,7 @@ func (e Encoder) encode(f *File, w io.Writer, template bool) error {
 		); err != nil {
 			return err
 		}
-		if i+1 < len(f.Messages.List) {
+		if hasNextNonObsolete(f.Messages.List[i+1:], template) {
 			if _, err := fmt.Fprintln(w); err != nil {
 				return err
 			}
@@ -256,4 +256,13 @@ func (e *Encoder) printDirective(
 		}
 	}
 	return nil
+}
+
+func hasNextNonObsolete(msgs []Message, template bool) bool {
+	for i := range msgs {
+		if !(template && msgs[i].Obsolete) {
+			return true
+		}
+	}
+	return false
 }

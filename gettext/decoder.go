@@ -446,12 +446,61 @@ var (
 )
 
 func (d *Decoder) readMessage() (m Message, err error) {
+	var previousPluralFormIndex uint8
+	var previous directiveType
+
+	defer func() {
+		if errors.Is(err, errEndOfMessage) {
+			switch previous {
+			case 0:
+				err = d.err("msgctxt or msgid")
+			case directiveTypeMsgctxt:
+				err = d.err("msgid")
+			case directiveTypeMsgid:
+				err = d.err("msgid_plural or msgstr")
+			case directiveTypeMsgidPlural:
+				err = d.err("msgstr")
+			case directiveTypeMsgstr:
+				err = nil
+			case directiveTypeMsgstrIndexed:
+				// TODO: Check whether an index was still missing
+				err = nil
+			default:
+				err = nil
+			}
+		} else if errors.Is(err, io.EOF) {
+			switch previous {
+			case 0:
+				err = Error{
+					Pos: d.pos, Expected: "msgctxt or msgid",
+					Err: io.ErrUnexpectedEOF,
+				}
+			case directiveTypeMsgctxt:
+				err = Error{
+					Pos: d.pos, Expected: "msgid",
+					Err: io.ErrUnexpectedEOF,
+				}
+			case directiveTypeMsgid:
+				err = Error{
+					Pos: d.pos, Expected: "msgid_plural or msgstr",
+					Err: io.ErrUnexpectedEOF,
+				}
+			case directiveTypeMsgidPlural:
+				err = Error{Pos: d.pos, Expected: "msgstr", Err: io.ErrUnexpectedEOF}
+			case directiveTypeMsgstr:
+				err = nil
+			case directiveTypeMsgstrIndexed:
+				// TODO: Check whether an index was still missing
+				err = nil
+			default:
+				err = nil
+			}
+		}
+	}()
+
 	start := d.pos
 	next, err := d.reader.Peek(2)
 	m.Obsolete = err == nil && string(next) == "#~"
-
-	var previousPluralFormIndex uint8
-	var previous directiveType
 
 LOOP:
 	for {
@@ -462,23 +511,7 @@ LOOP:
 			}
 			if string(next) != "#~" {
 				// End of obsolete message
-				switch previous {
-				case 0:
-					return m, d.err("msgctxt or msgid")
-				case directiveTypeMsgctxt:
-					return m, d.err("msgid")
-				case directiveTypeMsgid:
-					return m, d.err("msgid_plural or msgstr")
-				case directiveTypeMsgidPlural:
-					return m, d.err("msgstr")
-				case directiveTypeMsgstr:
-					// TODO: Check whether msgstr[n] was expected
-					return m, nil
-				case directiveTypeMsgstrIndexed:
-					// TODO: Check whether an index was still missing
-					return m, nil
-				}
-				return m, nil
+				return m, errEndOfMessage
 			}
 		}
 		if err := d.readOptionalWhitespace(); err != nil {
@@ -492,59 +525,6 @@ LOOP:
 		if d.pending.directiveType == 0 {
 			dir, err = d.readDirective(m.Obsolete)
 			if err != nil {
-				if errors.Is(err, errEndOfMessage) {
-					switch previous {
-					case 0:
-						return m, d.err("msgctxt or msgid")
-					case directiveTypeMsgctxt:
-						return m, d.err("msgid")
-					case directiveTypeMsgid:
-						return m, d.err("msgid_plural or msgstr")
-					case directiveTypeMsgidPlural:
-						return m, d.err("msgstr")
-					case directiveTypeMsgstr:
-						// TODO: Check whether msgstr[n] was expected
-						return m, nil
-					case directiveTypeMsgstrIndexed:
-						// TODO: Check whether an index was still missing
-						return m, nil
-					}
-					return m, nil
-				}
-				if errors.Is(err, io.EOF) {
-					switch previous {
-					case 0:
-						return m, Error{
-							Pos:      d.pos,
-							Expected: "msgctxt or msgid",
-							Err:      io.ErrUnexpectedEOF,
-						}
-					case directiveTypeMsgctxt:
-						return m, Error{
-							Pos:      d.pos,
-							Expected: "msgid",
-							Err:      io.ErrUnexpectedEOF,
-						}
-					case directiveTypeMsgid:
-						return m, Error{
-							Pos:      d.pos,
-							Expected: "msgid_plural or msgstr",
-							Err:      io.ErrUnexpectedEOF,
-						}
-					case directiveTypeMsgidPlural:
-						return m, Error{
-							Pos:      d.pos,
-							Expected: "msgstr",
-							Err:      io.ErrUnexpectedEOF,
-						}
-					case directiveTypeMsgstr:
-						// TODO: Check whether msgstr[n] was expected
-						return m, nil
-					case directiveTypeMsgstrIndexed:
-						// TODO: Check whether an index was still missing
-						return m, nil
-					}
-				}
 				return m, err
 			}
 		} else {

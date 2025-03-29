@@ -24,3 +24,9 @@ msgstr "Text"
 
 msgid "Second Message"
 msgstr "Second Text"
+
+#~ msgid "Obsolete message 2"
+#~ msgstr "Obsolete text 2"
+
+#~ msgid "Obsolete message 3"
+#~ msgstr "Obsolete text 3"
