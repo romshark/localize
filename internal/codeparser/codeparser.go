@@ -56,141 +56,40 @@ type CatalogRevision struct {
 
 // Collection is a collection of messages gathered from the
 type Collection struct {
-	Header   []string
-	Locale   language.Tag
+	Locale language.Tag
+	// TODO: consider turning this into map[string]MsgWithMeta for faster hash lookups
+	// such that no new map needs to be created and copied over during catalog updates.
 	Messages map[Msg]MsgMeta
 }
 
-func (c *Collection) MakePO() gettext.FilePO {
+func (c *Collection) MakePO(headTxt []string) gettext.FilePO {
 	var h gettext.FileHead
-	h.Language = gettext.HeaderLanguage{
-		Value:  c.Locale.String(),
-		Locale: c.Locale,
-	}
+	h.Language = gettext.HeaderLanguage{Value: c.Locale.String(), Locale: c.Locale}
 	h.MIMEVersion = "1.0"
 	h.ContentType = "text/plain; charset=UTF-8"
 	h.ContentTransferEncoding = "8bit"
 
-	pluralForms, ok := cldr.ByTag(c.Locale)
+	pluralForms, ok := cldr.ByTagOrBase(c.Locale)
 	if !ok {
-		base, _ := c.Locale.Base()
-		pluralForms, ok = cldr.ByBase(base)
-		if !ok {
-			panic(fmt.Errorf("unsupported locale: %v", c.Locale))
-		}
+		panic(fmt.Errorf("unsupported locale: %v", c.Locale))
 	}
 	h.PluralForms = gettext.HeaderPluralForms{
 		N:          h.PluralForms.N,
 		Expression: pluralForms.GettextFormula,
 	}
 
-	if c.Header != nil {
-		for _, line := range c.Header {
-			trimmed := strings.TrimSpace(line)
-			h.HeadComments.Text = append(h.HeadComments.Text, gettext.Comment{
-				Type:  gettext.CommentTypeTranslator,
-				Value: trimmed,
-			})
-		}
+	for _, line := range headTxt {
+		trimmed := strings.TrimSpace(line)
+		h.HeadComments.Text = append(h.HeadComments.Text, gettext.Comment{
+			Type:  gettext.CommentTypeTranslator,
+			Value: trimmed,
+		})
 	}
 
 	var m gettext.Messages
 	m.List = make([]gettext.Message, 0, len(c.Messages))
 	for msg, meta := range c.Messages {
-		var comments gettext.Comments
-		for _, pos := range meta.Pos {
-			comments.Text = append(comments.Text, gettext.Comment{
-				Type:  gettext.CommentTypeReference,
-				Value: fmt.Sprintf("%s:%d", pos.Filename, pos.Line),
-			})
-		}
-		if msg.Description != "" {
-			comments.Text = append(comments.Text, gettext.Comment{
-				Type:  gettext.CommentTypeExtracted,
-				Value: msg.Description,
-			})
-		}
-		gm := gettext.Message{
-			Msgctxt: gettext.Msgctxt{
-				Comments: comments,
-				Text: gettext.StringLiterals{
-					Lines: []gettext.StringLiteral{{Value: msg.Hash}},
-				},
-			},
-		}
-
-		switch msg.FuncType {
-		case FuncTypePlural, FuncTypePluralBlock:
-			// Plural
-			gm.Msgid = gettext.Msgid{
-				Text: gettext.StringLiterals{
-					Lines: []gettext.StringLiteral{{Value: msg.One}},
-				},
-			}
-			gm.MsgidPlural = gettext.MsgidPlural{
-				Text: gettext.StringLiterals{
-					Lines: []gettext.StringLiteral{{Value: msg.Other}},
-				},
-			}
-			for i, f := range pluralForms.CardinalForms {
-				addText := func(index int, text gettext.StringLiterals) {
-					switch index {
-					case 0:
-						gm.Msgstr0.Text = text
-					case 1:
-						gm.Msgstr1.Text = text
-					case 2:
-						gm.Msgstr2.Text = text
-					case 3:
-						gm.Msgstr3.Text = text
-					case 4:
-						gm.Msgstr4.Text = text
-					case 5:
-						gm.Msgstr5.Text = text
-					}
-				}
-
-				switch f {
-				case cldr.CLDRPluralFormZero:
-					addText(i, gettext.StringLiterals{
-						Lines: []gettext.StringLiteral{{Value: msg.Zero}},
-					})
-				case cldr.CLDRPluralFormOne:
-					addText(i, gettext.StringLiterals{
-						Lines: []gettext.StringLiteral{{Value: msg.One}},
-					})
-				case cldr.CLDRPluralFormTwo:
-					addText(i, gettext.StringLiterals{
-						Lines: []gettext.StringLiteral{{Value: msg.Two}},
-					})
-				case cldr.CLDRPluralFormFew:
-					addText(i, gettext.StringLiterals{
-						Lines: []gettext.StringLiteral{{Value: msg.Few}},
-					})
-				case cldr.CLDRPluralFormMany:
-					addText(i, gettext.StringLiterals{
-						Lines: []gettext.StringLiteral{{Value: msg.Many}},
-					})
-				case cldr.CLDRPluralFormOther:
-					addText(i, gettext.StringLiterals{
-						Lines: []gettext.StringLiteral{{Value: msg.Other}},
-					})
-				}
-			}
-		default:
-			// Regular
-			gm.Msgid = gettext.Msgid{
-				Text: gettext.StringLiterals{
-					Lines: []gettext.StringLiteral{{Value: msg.Other}},
-				},
-			}
-			gm.Msgstr = gettext.Msgstr{
-				Text: gettext.StringLiterals{
-					Lines: []gettext.StringLiteral{{Value: msg.Other}},
-				},
-			}
-		}
-
+		gm := MsgFromGettextMessage(pluralForms, msg, meta)
 		m.List = append(m.List, gm)
 	}
 
@@ -277,16 +176,11 @@ func Parse(
 	fileset := token.NewFileSet()
 	stats = new(Statistics)
 
-	pluralForms, ok := cldr.ByTag(locale)
+	pluralForms, ok := cldr.ByTagOrBase(locale)
 	if !ok {
-		// Fallback to base language if necessary.
-		base, _ := locale.Base()
-		pluralForms, ok = cldr.ByBase(base)
-		if !ok {
-			return collection, bundle, stats, srcErrs, fmt.Errorf(
-				"%w: %v", ErrUnsupportedLocale, locale,
-			)
-		}
+		return collection, bundle, stats, srcErrs, fmt.Errorf(
+			"%w: %v", ErrUnsupportedLocale, locale,
+		)
 	}
 
 	cfg := &packages.Config{
@@ -309,33 +203,13 @@ func Parse(
 		Locale:   locale,
 	}
 
+	var pkgBundle *packages.Package
 	for _, pkg := range pkgs {
 		if isPkgLocalizeBundle(bundlePkg, pkg) {
 			if !quiet && verbose {
 				fmt.Fprintf(os.Stderr, "bundle detected: %s\n", pkg.Dir)
 			}
-
-			// Find head.txt
-			head, err := os.ReadFile(filepath.Join(pkg.Dir, "head.txt"))
-			if err != nil {
-				if !errors.Is(err, os.ErrNotExist) {
-					return collection, bundle, stats, srcErrs,
-						fmt.Errorf("reading head.txt: %w", err)
-				}
-			}
-			collection.Header = strings.Split(string(head), "\n")
-
-			bundle, err := ParseBundle(pkg)
-			if err != nil {
-				return collection, nil, stats, nil, fmt.Errorf(
-					"parsing bundle: %w", err,
-				)
-			}
-			if !quiet && verbose {
-				for locale := range bundle.Translations {
-					fmt.Fprintf(os.Stderr, "catalog detected: %s\n", locale.String())
-				}
-			}
+			pkgBundle = pkg
 		}
 
 		for _, file := range pkg.Syntax {
@@ -484,6 +358,16 @@ func Parse(
 					return true
 				})
 			}
+		}
+	}
+
+	bundle, err = ParseBundle(pkgBundle, collection)
+	if err != nil {
+		return collection, nil, stats, nil, fmt.Errorf("parsing bundle: %w", err)
+	}
+	if !quiet && verbose {
+		for locale := range bundle.Translations {
+			fmt.Fprintf(os.Stderr, "catalog detected: %s\n", locale.String())
 		}
 	}
 
@@ -770,4 +654,103 @@ func validateQuantityArgument(
 	appendSrcErr(errs, pos, fmt.Errorf(
 		"%w: %s", ErrWrongQuantityArgType, tv.Type.String(),
 	))
+}
+
+func MsgFromGettextMessage(
+	pluralForms cldr.PluralForms, msg Msg, meta MsgMeta,
+) gettext.Message {
+	var comments gettext.Comments
+	for _, pos := range meta.Pos {
+		comments.Text = append(comments.Text, gettext.Comment{
+			Type:  gettext.CommentTypeReference,
+			Value: gettext.FmtCodeRef(pos.Filename, pos.Line),
+		})
+	}
+	if msg.Description != "" {
+		comments.Text = append(comments.Text, gettext.Comment{
+			Type:  gettext.CommentTypeExtracted,
+			Value: msg.Description,
+		})
+	}
+	gm := gettext.Message{
+		Msgctxt: gettext.Msgctxt{
+			Comments: comments,
+			Text: gettext.StringLiterals{
+				Lines: []gettext.StringLiteral{{Value: msg.Hash}},
+			},
+		},
+	}
+
+	switch msg.FuncType {
+	case FuncTypePlural, FuncTypePluralBlock:
+		// Plural
+		gm.Msgid = gettext.Msgid{
+			Text: gettext.StringLiterals{
+				Lines: []gettext.StringLiteral{{Value: msg.One}},
+			},
+		}
+		gm.MsgidPlural = gettext.MsgidPlural{
+			Text: gettext.StringLiterals{
+				Lines: []gettext.StringLiteral{{Value: msg.Other}},
+			},
+		}
+		for i, f := range pluralForms.CardinalForms {
+			addText := func(index int, text gettext.StringLiterals) {
+				switch index {
+				case 0:
+					gm.Msgstr0.Text = text
+				case 1:
+					gm.Msgstr1.Text = text
+				case 2:
+					gm.Msgstr2.Text = text
+				case 3:
+					gm.Msgstr3.Text = text
+				case 4:
+					gm.Msgstr4.Text = text
+				case 5:
+					gm.Msgstr5.Text = text
+				}
+			}
+
+			switch f {
+			case cldr.CLDRPluralFormZero:
+				addText(i, gettext.StringLiterals{
+					Lines: []gettext.StringLiteral{{Value: msg.Zero}},
+				})
+			case cldr.CLDRPluralFormOne:
+				addText(i, gettext.StringLiterals{
+					Lines: []gettext.StringLiteral{{Value: msg.One}},
+				})
+			case cldr.CLDRPluralFormTwo:
+				addText(i, gettext.StringLiterals{
+					Lines: []gettext.StringLiteral{{Value: msg.Two}},
+				})
+			case cldr.CLDRPluralFormFew:
+				addText(i, gettext.StringLiterals{
+					Lines: []gettext.StringLiteral{{Value: msg.Few}},
+				})
+			case cldr.CLDRPluralFormMany:
+				addText(i, gettext.StringLiterals{
+					Lines: []gettext.StringLiteral{{Value: msg.Many}},
+				})
+			case cldr.CLDRPluralFormOther:
+				addText(i, gettext.StringLiterals{
+					Lines: []gettext.StringLiteral{{Value: msg.Other}},
+				})
+			}
+		}
+	default:
+		// Regular
+		gm.Msgid = gettext.Msgid{
+			Text: gettext.StringLiterals{
+				Lines: []gettext.StringLiteral{{Value: msg.Other}},
+			},
+		}
+		gm.Msgstr = gettext.Msgstr{
+			Text: gettext.StringLiterals{
+				Lines: []gettext.StringLiteral{{Value: msg.Other}},
+			},
+		}
+	}
+	return gm
 }

@@ -127,3 +127,15 @@ func ByTag(locale language.Tag) (f PluralForms, ok bool) {
 	f, ok = byTag[locale]
 	return f, ok
 }
+
+// ByTagOrBase returns the PluralForms corresponding to locale.
+// If locale couldn't be found, the base language of locale is used.
+func ByTagOrBase(locale language.Tag) (f PluralForms, ok bool) {
+	f, ok = byTag[locale]
+	if !ok {
+		base, _ := locale.Base()
+		f, ok := byBase[base]
+		return f, ok
+	}
+	return f, ok
+}

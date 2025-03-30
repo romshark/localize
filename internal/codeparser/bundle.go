@@ -11,8 +11,8 @@ import (
 	"golang.org/x/tools/go/packages"
 )
 
-func ParseBundle(pkg *packages.Package) (*Bundle, error) {
-	bundle := &Bundle{Translations: make(map[language.Tag]gettext.FilePO)}
+func ParseBundle(pkg *packages.Package, collection *Collection) (*Bundle, error) {
+	bundle := &Bundle{Translations: make(map[language.Tag]POFile)}
 	gettextDecoder := gettext.NewDecoder()
 
 	err := findPOFiles(pkg.Dir, func(locale language.Tag, file string) error {
@@ -24,20 +24,26 @@ func ParseBundle(pkg *packages.Package) (*Bundle, error) {
 		if err != nil {
 			return fmt.Errorf("decoding .po file (%q): %w", file, err)
 		}
-		bundle.Translations[locale] = po
+		bundle.Translations[locale] = POFile{
+			Path:   file,
+			FilePO: po,
+		}
 		return nil
 	})
 	if err != nil {
 		return nil, fmt.Errorf("discovering catalog .po files in bundle: %w", err)
 	}
 
-	// TODO: validate .po files
-
 	return bundle, nil
 }
 
 type Bundle struct {
-	Translations map[language.Tag]gettext.FilePO
+	Translations map[language.Tag]POFile
+}
+
+type POFile struct {
+	Path string
+	gettext.FilePO
 }
 
 func findPOFiles(dir string, fn func(locale language.Tag, file string) error) error {
