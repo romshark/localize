@@ -83,8 +83,9 @@ type Reader interface {
 // Bundle is a group of localized readers.
 type Bundle struct {
 	locales          []language.Tag
-	defaultLocaleStr string
 	readers          []Reader
+	defaultLocaleStr string
+	matcher          language.Matcher
 	readerByLocale   map[string]Reader
 }
 
@@ -113,6 +114,7 @@ func New(defaultLocale language.Tag, bundle ...Reader) (*Bundle, error) {
 		readers[i] = r
 	}
 	return &Bundle{
+		matcher:          language.NewMatcher(locales),
 		locales:          locales,
 		readers:          readers,
 		defaultLocaleStr: def,
@@ -124,8 +126,7 @@ func New(defaultLocale language.Tag, bundle ...Reader) (*Bundle, error) {
 func (l *Bundle) Match(
 	locale language.Tag, tags ...language.Tag,
 ) (Reader, language.Confidence) {
-	matcher := language.NewMatcher(l.locales)
-	matchedTag, _, c := matcher.Match(tags...)
+	matchedTag, _, c := l.matcher.Match(tags...)
 	return l.readerByLocale[matchedTag.String()], c
 }
 
