@@ -2,13 +2,21 @@
 
 ![Localize Banner](./localize_banner.svg)
 
-Workflow:
+localize helps you localize your Go programs by generating and synchronizing
+[GNU gettext](https://www.gnu.org/software/gettext/) `.po` and `.pot` files.
+It generates highly efficient Go code to translate texts.
 
-1. Define the default texts in your code.
-2. Generate translation GNU texttext `.po` and `.pot` files from your source code.
-3. Translate locale template files (manually or using AI).
+## General Workflow
+
+1. Define texts in your code in the language of your code base (which will alway be used
+   as a last fallback option if no translation is found) using one of the provided
+   Reader methods such as `Text`, `Plural`, etc.
+2. Generate translation GNU gettext
+   `.po` and `.pot` files when you run from your source code:
+3. Translate `.po` files.
 4. Generate `.go` bundles from translated locale files.
-5. During app initialization, enable the bundles you need.
+5. During app initialization, enable the bundles you need in `localize.New`.
+6. Use the same
 
 ## Example Workflow
 
@@ -17,29 +25,49 @@ Workflow:
 ```go
 package main
 
+import (
+	"github.com/romshark/localize"
+	"golang.org/x/text/language"
+	// Once you generated localizebundle you'll import it here
+)
+
+// ℹ️ This will automatically bring your bundle in shape when you run `go generate`.
+//go:generate go run github.com/romshark/localize@latest generate -l en -b localizebundle
+
 func main() {
-	// Get English localization (which is the default in this example).
+	// Set English as your default source code's locale.
 	localization, err := localize.New(language.English,
 		/* once you generated the localized readers you'll add them here */)
 	if err != nil {
 		panic(err)
 	}
 
-	// Get the best matching localized reader for English.
-	l := localization.Match(language.English)
+	// Determine the user's preferred locale.
+	userLocalePreference := language.English
 
-	fmt.Println(
-		// Politely asking for the user's mood.
-		l.Text("How are you today?"),
-	)
+	// Get the best matching localized reader for English.
+	l := localization.Match(userLocalePreference)
+
+	// ℹ️ All comments above localize method calls are included in the translation
+	// and template files. This will give the translator and/or automated translation
+	// software more context to provide higher quality translations.
+
+	// Politely asking for the user's mood.
+	fmt.Println(l.Text("How are you today?"))
 
 	messagesUnread, messagesProcessing := 4, 10
+
+	// ℹ️ when reading your code, localize will make sure you provided all plural forms
+	// your source code's locale requires and report errors if you left something out.
 
 	// Number of unread messages the user currently has.
 	l.Plural(localize.Forms{
 		One: "You have %d unread message",
 		Other: "You have %d unread messages",
 	}, messagesUnread)
+
+	// ℹ️ Block and TextBlock methods allow you to format your texts in a more
+	// readable way. They behave very similarly to GraphQL's block strings.
 
 	// Number of messages that are currently being processed.
 	l.PluralBlock(localize.Forms{
@@ -55,7 +83,7 @@ func main() {
 }
 ```
 
-2. Scan your code base to generate the `.po` file and as `.pot` files for translation:
+2. Generate a localize bundle to generate the `.po` file and as `.pot` files for translation:
 
 ```sh
 go run github.com/romshark/localize/cmd/localize generate -l en -t de -t fr
@@ -68,3 +96,27 @@ This will generate:
 - `locale.fr.pot` template file for French translations.
 
 3. Translate your
+
+## Bundle File Structure
+
+The generated bundle always contains the following files:
+
+- `bundle_gen.go` is the generated Go code containing `localize.Reader` implementations
+  for all languages defined by `.po` files in the bundle.
+  - **Not editable** 🤖 Any manual change is always overwritten.
+- `catalog.pot` is a gettext template file used to create `.po` translation files.
+  - **Not editable** 🤖 Any manual change is always overwritten.
+- `catalog.[locale].po` are gettext translation files
+  for the locale specified in `[locale]`.
+  - **Editable 📝**
+    - Changed translations are preserved.
+    - If a new text isn't found in the translation file it's automatically added.
+    - If a text is no longer used in the source
+      it's marked obsolete in the translation file.
+    - Obsolete messages must be cleaned up manually.
+    - Texts are reordered if necessary to preserve the right sorting order.
+- `head.txt` is a text file defining the head comment to use in generated files.
+  If this file isn't found a blank new one is generated.
+  - **Editable 📝** You're supposed to edit this file.
+
+All other files in the bundle package are ignored.
