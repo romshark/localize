@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"cmp"
 	"errors"
-	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -15,8 +14,8 @@ import (
 	"github.com/romshark/localize/gettext"
 	"github.com/romshark/localize/internal/cldr"
 	"github.com/romshark/localize/internal/codeparser"
+	"github.com/romshark/localize/internal/config"
 	"github.com/romshark/localize/internal/gengo"
-	"golang.org/x/text/language"
 	"mvdan.cc/gofumpt/format"
 )
 
@@ -51,7 +50,7 @@ func run(osArgs []string) error {
 
 func runGenerate(osArgs []string) error {
 	start := time.Now()
-	conf, err := parseCLIArgsGenerate(osArgs)
+	conf, err := config.ParseCLIArgsGenerate(osArgs)
 	if err != nil {
 		return fmt.Errorf("parsing arguments: %w", err)
 	}
@@ -122,76 +121,15 @@ func runGenerate(osArgs []string) error {
 	return nil
 }
 
-func catalogTemplateFileName(outPath string) string {
-	return filepath.Join(outPath, "catalog.pot")
-}
-
-type ConfigGenerate struct {
-	Locale                 language.Tag
-	SrcPathPattern         string
-	OutPathCatalogTemplate string
-	TrimPath               bool
-	QuietMode              bool
-	VerboseMode            bool
-	BundlePkgPath          string
-}
-
-// parseCLIArgsGenerate parses CLI arguments for command "generate"
-func parseCLIArgsGenerate(osArgs []string) (*ConfigGenerate, error) {
-	c := &ConfigGenerate{}
-
-	var locale string
-
-	cli := flag.NewFlagSet(osArgs[0], flag.ExitOnError)
-	cli.StringVar(&locale, "l", "",
-		"default locale of the original source code texts in BCP 47")
-	cli.StringVar(&c.SrcPathPattern, "p", ".", "path to Go module")
-	cli.StringVar(&c.OutPathCatalogTemplate, "tmpl", "",
-		"catalog template output file path. Set to bundle package by default.")
-	cli.BoolVar(&c.TrimPath, "trimpath", true, "enable source code path trimming")
-	cli.BoolVar(&c.QuietMode, "q", false, "disable all console logging")
-	cli.BoolVar(&c.VerboseMode, "v", false, "enables verbose console logging")
-	cli.StringVar(&c.BundlePkgPath, "b", "localizebundle",
-		"path to generated Go bundle package relative to module path (-p)")
-
-	if err := cli.Parse(osArgs[2:]); err != nil {
-		return nil, fmt.Errorf("parsing: %w", err)
-	}
-
-	if c.OutPathCatalogTemplate == "" {
-		c.OutPathCatalogTemplate = catalogTemplateFileName(
-			c.BundlePkgPath,
-		)
-	}
-
-	if locale == "" {
-		return nil, fmt.Errorf(
-			"please provide a valid BCP 47 locale for " +
-				"the default language of your original code base " +
-				"using the 'l' parameter",
-		)
-	}
-	var err error
-	c.Locale, err = language.Parse(locale)
-	if err != nil {
-		return nil, fmt.Errorf(
-			"argument 'l' (%q) must be a valid BCP 47 locale: %w", locale, err,
-		)
-	}
-
-	return c, nil
-}
-
-func goBundleFileName(pkgPath string) string {
-	return filepath.Join(pkgPath, filepath.Base(pkgPath)+"_gen.go")
-}
-
 func generateGoBundle(
-	conf *ConfigGenerate, headTxt []string,
+	conf *config.ConfigGenerate, headTxt []string,
 	collection *codeparser.Collection, bundle *codeparser.Bundle,
 ) error {
+	goBundleFileName := filepath.Join(
+		conf.BundlePkgPath, filepath.Base(conf.BundlePkgPath)+"_gen.go",
+	)
 	f, err := os.OpenFile(
-		goBundleFileName(conf.BundlePkgPath),
+		goBundleFileName,
 		os.O_CREATE|os.O_TRUNC|os.O_WRONLY,
 		0o644,
 	)
@@ -219,7 +157,7 @@ func generateGoBundle(
 }
 
 // readOrCreateHeadTxt reads the head.txt file if it exists, otherwise creates it.
-func readOrCreateHeadTxt(conf *ConfigGenerate) ([]string, error) {
+func readOrCreateHeadTxt(conf *config.ConfigGenerate) ([]string, error) {
 	headFilePath := filepath.Join(conf.BundlePkgPath, "head.txt")
 	if fc, err := os.ReadFile(headFilePath); errors.Is(err, os.ErrNotExist) {
 		if !conf.QuietMode {
@@ -241,7 +179,7 @@ func readOrCreateHeadTxt(conf *ConfigGenerate) ([]string, error) {
 }
 
 func writeSourceCatalog(
-	conf *ConfigGenerate, poEncoder gettext.Encoder, po gettext.FilePO,
+	conf *config.ConfigGenerate, poEncoder gettext.Encoder, po gettext.FilePO,
 ) error {
 	{ // Write the source catalog `.po` file.
 		fileName := filepath.Join(
@@ -267,7 +205,7 @@ func writeSourceCatalog(
 }
 
 func writeTranslationTemplate(
-	conf *ConfigGenerate, poEncoder gettext.Encoder, po gettext.FilePO,
+	conf *config.ConfigGenerate, poEncoder gettext.Encoder, po gettext.FilePO,
 ) error {
 	f, err := os.OpenFile(
 		conf.OutPathCatalogTemplate, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644,
@@ -290,7 +228,7 @@ func writeTranslationTemplate(
 }
 
 func updateTranslationCatalogs(
-	conf *ConfigGenerate,
+	conf *config.ConfigGenerate,
 	bundle *codeparser.Bundle, collection *codeparser.Collection,
 	poEncoder gettext.Encoder,
 ) error {
