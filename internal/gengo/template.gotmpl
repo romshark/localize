@@ -260,14 +260,24 @@ func (r {{ .TypeName.Exported }}) Base() language.Base { return {{ .TypeName.Une
 
 // Text provides static 1-to-1 translations.
 func (r {{ .TypeName.Exported }}) Text(text string) (localized string) {
-	return {{ .TypeName.Unexported }}Static[text]
+	s := {{ .TypeName.Unexported }}Static[text]
+	if s == "" {
+		// Fall back to source translation.
+		return text
+	}
+	return s
 }
 
 // Block provides static 1-to-1 translations for a multi-line string block.
 // Common leading indentation is automatically removed.
 // For more information, see github.com/romshark/localize.Reader documentation.
 func (r {{ .TypeName.Exported }}) Block(text string) string {
-	return {{ .TypeName.Unexported }}Static[text]
+	s := {{ .TypeName.Unexported }}Static[text]
+	if s == "" {
+		// Fall back to source translation.
+		return strfmt.Dedent(text)
+	}
+	return s
 }
 
 // Plural provides plural translations in cardinal form.
@@ -275,11 +285,16 @@ func (r {{ .TypeName.Exported }}) Block(text string) string {
 func (r {{ .TypeName.Exported }}) Plural(
 	templates localize.Forms, quantity any,
 ) (localized string) {
+	translated := {{ .TypeName.Unexported }}Plural[templates.Other]
 	var q float64
 	switch n := quantity.(type) {
 	case uint:
 		if n >= maxInt53 {
 			// Lossy conversion.
+			if translated.Other != "" {
+				return fmt.Sprintf(translated.Other, n)
+			}
+			// Fall back to source translation.
 			return fmt.Sprintf(templates.Other, n)
 		}
 		q = float64(n)
@@ -292,12 +307,20 @@ func (r {{ .TypeName.Exported }}) Plural(
 	case uint64:
 		if n >= maxInt53 {
 			// Lossy conversion.
+			if translated.Other != "" {
+				return fmt.Sprintf(translated.Other, n)
+			}
+			// Fall back to source translation.
 			return fmt.Sprintf(templates.Other, n)
 		}
 		q = float64(n)
 	case int:
 		if n >= maxInt53 || n <= minInt53 {
 			// Lossy conversion.
+			if translated.Other != "" {
+				return fmt.Sprintf(translated.Other, n)
+			}
+			// Fall back to source translation.
 			return fmt.Sprintf(templates.Other, n)
 		}
 		q = float64(n)
@@ -310,6 +333,10 @@ func (r {{ .TypeName.Exported }}) Plural(
 	case int64:
 		if n >= maxInt53 || n <= minInt53 {
 			// Lossy conversion.
+			if translated.Other != "" {
+				return fmt.Sprintf(translated.Other, n)
+			}
+			// Fall back to source translation.
 			return fmt.Sprintf(templates.Other, n)
 		}
 		q = float64(n)
@@ -319,23 +346,47 @@ func (r {{ .TypeName.Exported }}) Plural(
 		q = float64(n)
 	default:
 		// Incorrect input type, fallback to default form.
+		if translated.Other != "" {
+			return fmt.Sprintf(translated.Other, quantity)
+		}
+		// Fall back to source translation.
 		return fmt.Sprintf(templates.Other, quantity)
 	}
 
-	templates = {{ .TypeName.Unexported }}Plural[templates.Other]
 	tmpl := templates.Other
 	switch {{ .TypeName.Unexported }}Translator.CardinalPluralRule(q, 0) {
 	case locales.PluralRuleZero:
-		tmpl = templates.Zero
+		if translated.Zero != "" {
+			tmpl = translated.Zero
+		} else {
+			tmpl = templates.Zero
+		}
 	case locales.PluralRuleOne:
-		tmpl = templates.One
+		if translated.One != "" {
+			tmpl = translated.One
+		} else {
+			tmpl = templates.One
+		}
 	case locales.PluralRuleTwo:
-		tmpl = templates.Two
+		if translated.Two != "" {
+			tmpl = translated.Two
+		} else {
+			tmpl = templates.Two
+		}
 	case locales.PluralRuleFew:
-		tmpl = templates.Few
+		if translated.Few != "" {
+			tmpl = translated.Few
+		} else {
+			tmpl = templates.Few
+		}
 	case locales.PluralRuleMany:
-		tmpl = templates.Many
+		if translated.Many != "" {
+			tmpl = translated.Many
+		} else {
+			tmpl = templates.Many
+		}
 	}
+
 	return fmt.Sprintf(tmpl, quantity)
 }
 
