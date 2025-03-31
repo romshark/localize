@@ -113,8 +113,9 @@ func New(defaultLocale language.Tag, bundle ...Reader) (*Bundle, error) {
 		readerByLocale[localeStr] = r
 		readers[i] = r
 	}
+	matcher := language.NewMatcher(locales)
 	return &Bundle{
-		matcher:          language.NewMatcher(locales),
+		matcher:          matcher,
 		locales:          locales,
 		readers:          readers,
 		defaultLocaleStr: def,
@@ -123,10 +124,8 @@ func New(defaultLocale language.Tag, bundle ...Reader) (*Bundle, error) {
 }
 
 // Match returns the best matching reader for locale.
-func (l *Bundle) Match(
-	locale language.Tag, tags ...language.Tag,
-) (Reader, language.Confidence) {
-	matchedTag, _, c := l.matcher.Match(tags...)
+func (l *Bundle) Match(locales ...language.Tag) (Reader, language.Confidence) {
+	matchedTag, _, c := l.matcher.Match(locales...)
 	return l.readerByLocale[matchedTag.String()], c
 }
 
