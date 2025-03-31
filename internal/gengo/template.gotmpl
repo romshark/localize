@@ -204,7 +204,7 @@ func (r {{ .SourceTypeName.Exported }}) Translator() locales.Translator {
 
 {{ range .Catalogs }}
 
-var {{ .TypeName.Unexported }}Static = map[string]string {
+var {{ .TypeName.Unexported }}Static = map[string]string{
 	{{ range .POFile.File.Messages.List -}}
 	{{ if not .Obsolete -}}
 	
@@ -221,25 +221,25 @@ var {{ .TypeName.Unexported }}Static = map[string]string {
 	{{ end }}
 }
 
-var {{ .TypeName.Unexported }}Plural = map[string]localize.Forms {
+var {{ .TypeName.Unexported }}Plural = map[string]localize.Forms{
 	{{ range .PluralMessages -}}	
-	{{ printf "%q" .Other }}: localize.Forms {
-		{{ if .Zero -}}
-		Zero: {{ printf "%q" .Zero }},
+	{{ printf "%q" .SourceOther }}: localize.Forms {
+		{{ if .Translated.Zero -}}
+		Zero: {{ printf "%q" .Translated.Zero }},
 		{{ end -}}
-		{{ if .One -}}
-		One: {{ printf "%q" .One }},
+		{{ if .Translated.One -}}
+		One: {{ printf "%q" .Translated.One }},
 		{{ end -}}
-		{{ if .Two -}}
-		Two: {{ printf "%q" .Two }},
+		{{ if .Translated.Two -}}
+		Two: {{ printf "%q" .Translated.Two }},
 		{{ end -}}
-		{{ if .Few -}}
-		Few: {{ printf "%q" .Few }},
+		{{ if .Translated.Few -}}
+		Few: {{ printf "%q" .Translated.Few }},
 		{{ end -}}
-		{{ if .Many -}}
-		Many: {{ printf "%q" .Many }},
+		{{ if .Translated.Many -}}
+		Many: {{ printf "%q" .Translated.Many }},
 		{{ end -}}
-		Other: {{ printf "%q" .Other }},
+		Other: {{ printf "%q" .Translated.Other }},
 	},
 	{{ end }}
 }

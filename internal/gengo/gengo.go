@@ -39,11 +39,15 @@ func Write(
 		Exported   string
 		Unexported string
 	}
+	type pluralMsg struct {
+		SourceOther string
+		Translated  localize.Forms
+	}
 	type catalogInfo struct {
 		TypeName       typeName
 		Locale         localeInfo
 		POFile         gettext.FilePO
-		PluralMessages []localize.Forms
+		PluralMessages []pluralMsg
 	}
 	type tmplInfo struct {
 		Package              string
@@ -84,13 +88,16 @@ func Write(
 			tpName := localizationTypeName(loc)
 			tpNameUnexp := strings.ToLower(tpName[:1]) + tpName[1:]
 
-			pluralMessages := []localize.Forms{}
+			pluralMessages := []pluralMsg{}
 			for _, msg := range bundle.Messages.List {
 				if msg.Obsolete || len(msg.MsgidPlural.Text.Lines) == 0 {
 					continue
 				}
 				f := pluralFromGettextMsg(cldrData.CardinalForms, &msg)
-				pluralMessages = append(pluralMessages, f)
+				pluralMessages = append(pluralMessages, pluralMsg{
+					SourceOther: msg.MsgidPlural.Text.String(),
+					Translated:  f,
+				})
 			}
 
 			info.Catalogs = append(info.Catalogs, catalogInfo{
