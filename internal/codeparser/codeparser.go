@@ -17,7 +17,6 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"time"
 	"unsafe"
 
 	"github.com/cespare/xxhash"
@@ -49,14 +48,10 @@ type Statistics struct {
 	FilesTraversed   atomic.Int64
 }
 
-type CatalogRevision struct {
-	DateTime   time.Time // Optional
-	Translator string    // Optional, format: "John Doe <john.doe@example.com>"
-}
-
 // Collection is a collection of messages gathered from the
 type Collection struct {
-	Locale language.Tag
+	GeneratorVersion int
+	Locale           language.Tag
 	// TODO: consider turning this into map[string]MsgWithMeta for faster hash lookups
 	// such that no new map needs to be created and copied over during catalog updates.
 	Messages map[Msg]MsgMeta
@@ -366,7 +361,7 @@ func Parse(
 		return collection, nil, stats, nil, fmt.Errorf("parsing bundle: %w", err)
 	}
 	if !quiet && verbose {
-		for locale := range bundle.Translations {
+		for locale := range bundle.Catalogs {
 			fmt.Fprintf(os.Stderr, "catalog detected: %s\n", locale.String())
 		}
 	}

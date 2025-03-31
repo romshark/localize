@@ -12,7 +12,10 @@
 //  /_____/\____/ \___/ \__,_//_//_/  /___/\___/    |___//_/
 //
 // Package localizebundle provides generated localization readers for:
-// - en
+// - {{ .SourceLocale.Str }}
+{{ range .Catalogs -}}
+// - {{ .Locale.Str }}
+{{ end }}
 package {{ .Package }}
 
 import (
@@ -23,8 +26,9 @@ import (
 	"github.com/romshark/localize/strfmt"
 	"golang.org/x/text/language"
 	"github.com/go-playground/locales"
-	{{ range .Catalogs }}
-	locales{{ .Locale }} "github.com/go-playground/locales/{{ .LocalesSubpackage }}"
+	locales{{ .SourceLocale.Str }} "{{ .SourceLocale.GoPlaygroundPkg }}"
+	{{ range .Catalogs -}}
+	locales{{ .Locale.Str }} "{{ .Locale.GoPlaygroundPkg }}"
 	{{ end }}
 )
 
@@ -39,8 +43,11 @@ const (
 // Readers returns an iterator over all available translation readers.
 func Readers() iter.Seq[localize.Reader] {
 	return func(yield func(localize.Reader) bool) {
+		if !yield({{ .SourceTypeName.Exported }}{}) {
+			return
+		}
 		{{ range .Catalogs }}
-		if !yield({{ .TypeName }}{}) {
+		if !yield({{ .TypeName.Exported }}{}) {
 			return
 		}
 		{{ end }}
@@ -52,92 +59,65 @@ const (
 	maxInt53 = 1 << 53
 )
 
+var (
+	{{ .SourceTypeName.Unexported }}Translator = locales{{ .SourceLocale.Str }}.New()
+	{{ .SourceTypeName.Unexported }}Tag language.Tag
+	{{ .SourceTypeName.Unexported }}Base language.Base
 {{ range .Catalogs }}
-var {{ .TypeNameUnexported }}Locales = locales{{ .Locale }}.New()
-var {{ .TypeNameUnexported }}Tag language.Tag
-var {{ .TypeNameUnexported }}Base language.Base
+	{{ .TypeName.Unexported }}Translator = locales{{ .Locale.Str }}.New()
+	{{ .TypeName.Unexported }}Tag language.Tag
+	{{ .TypeName.Unexported }}Base language.Base
 {{ end }}
+)
 
 func init() {
+	{{ .SourceTypeName.Unexported }}Tag = language.MustParse(
+		{{ printf "%q" .SourceLocale.Str }},
+	)
+	{{ .SourceTypeName.Unexported }}Base, _ = {{ .SourceTypeName.Unexported }}Tag.Base()
+
 	{{ range .Catalogs }}
-	{{ .TypeNameUnexported }}Tag = language.MustParse({{ printf "%q" .LocaleTag.String }})
-	{{ .TypeNameUnexported }}Base, _ = {{ .TypeNameUnexported }}Tag.Base()
+	{{ .TypeName.Unexported }}Tag = language.MustParse(
+		{{ printf "%q" .Locale.Str }},
+	)
+	{{ .TypeName.Unexported }}Base, _ = {{ .TypeName.Unexported }}Tag.Base()
 	{{ end }}
 }
 
-{{ range .Catalogs }}
+/*** SOURCE CATALOG ***/
 
-{{ if not .Native }}
-var {{ .TypeNameUnexported }}Static = map[string]string {
-	{{ range .MessagesStatic }}
-	{{ printf "%q" .Other }}: {{ printf "%q" .Other }},
-	{{ end }}
-}
-var {{ .TypeNameUnexported }}Plural = map[string]localize.Forms {
-	{{ range .MessagesPlural }}
-	{{ printf "%q" .Other }}: {
-		{{- if .Zero -}}
-		Zero: {{ printf "%q" .Zero }},
-		{{ end -}}
-		{{- if .One -}}
-		One: {{ printf "%q" .One }},
-		{{ end -}}
-		{{- if .Two -}}
-		Two: {{ printf "%q" .Two }},
-		{{ end -}}
-		{{- if .Few -}}
-		Few: {{ printf "%q" .Few }},
-		{{ end -}}
-		{{- if .Many -}}
-		Many: {{ printf "%q" .Many }},
-		{{ end -}}
-		Other: {{ printf "%q" .Other }},
-	},
-	{{ end }}
-}
-{{ end }}
+// {{ .SourceTypeName.Exported }} is a localized reader implementation for locale {{ printf "%q" .SourceLocale.Str }}.
+type {{ .SourceTypeName.Exported }} struct{}
 
-
-// {{ .TypeName }} is a localized reader implementation for locale {{ printf "%q" .LocaleTag.String }}.
-type {{ .TypeName }} struct{}
-
-var _ localize.Reader = new({{ .TypeName }})
+var _ localize.Reader = new({{ .SourceTypeName.Exported }})
 
 // Locale provides the locale this reader localizes for.
-// Always returns the locale {{ printf "%q" .LocaleTag.String }}.
-func (r {{ .TypeName }}) Locale() language.Tag { return {{ .TypeNameUnexported }}Tag }
+// Always returns the locale {{ printf "%q" .SourceLocale.Str }}.
+func (r {{ .SourceTypeName.Exported }}) Locale() language.Tag { return {{ .SourceTypeName.Unexported }}Tag }
 
 // Base provides the base language this reader localizes for.
-// Always returns the base language of locale {{ printf "%q" .LocaleTag.String }}.
-func (r {{ .TypeName }}) Base() language.Base { return {{ .TypeNameUnexported }}Base }
+// Always returns the base language of locale {{ printf "%q" .SourceLocale.Str }}.
+func (r {{ .SourceTypeName.Exported }}) Base() language.Base { return {{ .SourceTypeName.Unexported }}Base }
 
 // Text provides static 1-to-1 translations.
-func (r {{ .TypeName }}) Text(text string) (localized string) {
-	{{ if .Native }}
-	// This reader reads the original source code's native locale.
+func (r {{ .SourceTypeName.Exported }}) Text(text string) (localized string) {
+	// This reader reads the original source code's locale.
 	// No translation necessary.
 	return text
-	{{ else }}
-	return {{ .TypeNameUnexported }}Static[text]
-	{{ end }}
 }
 
 // Block provides static 1-to-1 translations for a multi-line string block.
 // Common leading indentation is automatically removed.
 // For more information, see github.com/romshark/localize.Reader documentation.
-func (r {{ .TypeName }}) Block(text string) string {
-	{{ if .Native }}
-	// This reader reads the original source code's native locale.
+func (r {{ .SourceTypeName.Exported }}) Block(text string) string {
+	// This reader reads the original source code's locale.
 	// No translation necessary.
 	return strfmt.Dedent(text)
-	{{ else }}
-	return {{ .TypeNameUnexported }}Static[text]
-	{{ end }}
 }
 
 // Plural provides plural translations in cardinal form.
 // For more information, see github.com/romshark/localize.Reader documentation.
-func (r {{ .TypeName }}) Plural(
+func (r {{ .SourceTypeName.Exported }}) Plural(
 	templates localize.Forms, quantity any,
 ) (localized string) {
 	var q float64
@@ -187,14 +167,11 @@ func (r {{ .TypeName }}) Plural(
 		return fmt.Sprintf(templates.Other, quantity)
 	}
 
-	{{ if .Native }}
-	// This reader reads the original source code's native locale.
+	// This reader reads the original source code's locale.
 	// No translation necessary.
-	{{ else }}
-	templates = {{ .TypeNameUnexported }}Plural[templates.Other]
-	{{ end }}
+
 	tmpl := templates.Other
-	switch {{ .TypeNameUnexported }}Locales.CardinalPluralRule(q, 0) {
+	switch {{ .SourceTypeName.Unexported }}Translator.CardinalPluralRule(q, 0) {
 	case locales.PluralRuleZero:
 		tmpl = templates.Zero
 	case locales.PluralRuleOne:
@@ -211,19 +188,169 @@ func (r {{ .TypeName }}) Plural(
 
 // PluralBlock behaves like Plural and formats like Block.
 // For more information, see github.com/romshark/localize.Reader documentation.
-func (r {{ .TypeName }}) PluralBlock(
+func (r {{ .SourceTypeName.Exported }}) PluralBlock(
 	templates localize.Forms, quantity any,
 ) (localized string) {	
-	{{ if .Native }}
 	return strfmt.Dedent(r.Plural(templates, quantity))
-	{{ else }}
-	return r.Plural(templates, quantity)
+}
+
+// Translator returns the localized translator of
+// {{ .SourceLocale.GoPlaygroundPkg }}.
+func (r {{ .SourceTypeName.Exported }}) Translator() locales.Translator {
+	return {{ .SourceTypeName.Unexported }}Translator
+}
+
+/*** TRANSLATION CATALOGS ***/
+
+{{ range .Catalogs }}
+
+var {{ .TypeName.Unexported }}Static = map[string]string {
+	{{ range .POFile.File.Messages.List -}}
+	{{ if not .Obsolete -}}
+	
+	{{ if .Msgstr.Text.Lines -}}
+	{{ with .Msgid.Text -}}
+	{{ printf "%q" (.String) }} : 
+	{{ end -}}
+	{{ with .Msgstr.Text -}}
+	{{ printf "%q" (.String) }},
+	{{ end -}}
+	{{ end -}}
+	
+	{{ end -}}
 	{{ end }}
 }
 
-// Translator returns the localized translator of github.com/go-playground/locales/{{ .LocalesSubpackage }}
-func (r {{ .TypeName }}) Translator() locales.Translator {
-	return {{ .TypeNameUnexported }}Locales
+var {{ .TypeName.Unexported }}Plural = map[string]localize.Forms {
+	{{ range .PluralMessages -}}	
+	{{ printf "%q" .Other }}: localize.Forms {
+		{{ if .Zero -}}
+		Zero: {{ printf "%q" .Zero }},
+		{{ end -}}
+		{{ if .One -}}
+		One: {{ printf "%q" .One }},
+		{{ end -}}
+		{{ if .Two -}}
+		Two: {{ printf "%q" .Two }},
+		{{ end -}}
+		{{ if .Few -}}
+		Few: {{ printf "%q" .Few }},
+		{{ end -}}
+		{{ if .Many -}}
+		Many: {{ printf "%q" .Many }},
+		{{ end -}}
+		Other: {{ printf "%q" .Other }},
+	},
+	{{ end }}
+}
+
+
+// {{ .TypeName.Exported }} is a localized reader implementation for locale {{ printf "%q" .Locale.Str }}.
+type {{ .TypeName.Exported }} struct{}
+
+var _ localize.Reader = new({{ .TypeName.Exported }})
+
+// Locale provides the locale this reader localizes for.
+// Always returns the locale {{ printf "%q" .Locale.Str }}.
+func (r {{ .TypeName.Exported }}) Locale() language.Tag { return {{ .TypeName.Unexported }}Tag }
+
+// Base provides the base language this reader localizes for.
+// Always returns the base language of locale {{ printf "%q" .Locale.Str }}.
+func (r {{ .TypeName.Exported }}) Base() language.Base { return {{ .TypeName.Unexported }}Base }
+
+// Text provides static 1-to-1 translations.
+func (r {{ .TypeName.Exported }}) Text(text string) (localized string) {
+	return {{ .TypeName.Unexported }}Static[text]
+}
+
+// Block provides static 1-to-1 translations for a multi-line string block.
+// Common leading indentation is automatically removed.
+// For more information, see github.com/romshark/localize.Reader documentation.
+func (r {{ .TypeName.Exported }}) Block(text string) string {
+	return {{ .TypeName.Unexported }}Static[text]
+}
+
+// Plural provides plural translations in cardinal form.
+// For more information, see github.com/romshark/localize.Reader documentation.
+func (r {{ .TypeName.Exported }}) Plural(
+	templates localize.Forms, quantity any,
+) (localized string) {
+	var q float64
+	switch n := quantity.(type) {
+	case uint:
+		if n >= maxInt53 {
+			// Lossy conversion.
+			return fmt.Sprintf(templates.Other, n)
+		}
+		q = float64(n)
+	case uint8:
+		q = float64(n)
+	case uint16:
+		q = float64(n)
+	case uint32:
+		q = float64(n)
+	case uint64:
+		if n >= maxInt53 {
+			// Lossy conversion.
+			return fmt.Sprintf(templates.Other, n)
+		}
+		q = float64(n)
+	case int:
+		if n >= maxInt53 || n <= minInt53 {
+			// Lossy conversion.
+			return fmt.Sprintf(templates.Other, n)
+		}
+		q = float64(n)
+	case int8:
+		q = float64(n)
+	case int16:
+		q = float64(n)
+	case int32:
+		q = float64(n)
+	case int64:
+		if n >= maxInt53 || n <= minInt53 {
+			// Lossy conversion.
+			return fmt.Sprintf(templates.Other, n)
+		}
+		q = float64(n)
+	case float32:
+		q = float64(n)
+	case float64:
+		q = float64(n)
+	default:
+		// Incorrect input type, fallback to default form.
+		return fmt.Sprintf(templates.Other, quantity)
+	}
+
+	templates = {{ .TypeName.Unexported }}Plural[templates.Other]
+	tmpl := templates.Other
+	switch {{ .TypeName.Unexported }}Translator.CardinalPluralRule(q, 0) {
+	case locales.PluralRuleZero:
+		tmpl = templates.Zero
+	case locales.PluralRuleOne:
+		tmpl = templates.One
+	case locales.PluralRuleTwo:
+		tmpl = templates.Two
+	case locales.PluralRuleFew:
+		tmpl = templates.Few
+	case locales.PluralRuleMany:
+		tmpl = templates.Many
+	}
+	return fmt.Sprintf(tmpl, quantity)
+}
+
+// PluralBlock behaves like Plural and formats like Block.
+// For more information, see github.com/romshark/localize.Reader documentation.
+func (r {{ .TypeName.Exported }}) PluralBlock(
+	templates localize.Forms, quantity any,
+) (localized string) {	
+	return r.Plural(templates, quantity)
+}
+
+// Translator returns the localized translator of
+// {{ .Locale.GoPlaygroundPkg }}.
+func (r {{ .TypeName.Exported }}) Translator() locales.Translator {
+	return {{ .TypeName.Unexported }}Translator
 }
 
 {{ end }}

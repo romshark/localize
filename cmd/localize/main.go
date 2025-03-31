@@ -89,7 +89,7 @@ func runGenerate(osArgs []string) error {
 
 	po := collection.MakePO(headTxt)
 
-	if err := writeNativeSrcCatalog(conf, poEncoder, po); err != nil {
+	if err := writeSourceCatalog(conf, poEncoder, po); err != nil {
 		return fmt.Errorf("writing native catalog: %w", err)
 	}
 
@@ -97,7 +97,7 @@ func runGenerate(osArgs []string) error {
 		return fmt.Errorf("writing catalog.pot: %w", err)
 	}
 
-	if err := generateGoBundle(conf, headTxt, collection); err != nil {
+	if err := generateGoBundle(conf, headTxt, collection, bundle); err != nil {
 		return fmt.Errorf("writing bundle_gen.go: %w", err)
 	}
 
@@ -187,7 +187,8 @@ func goBundleFileName(pkgPath string) string {
 }
 
 func generateGoBundle(
-	conf *ConfigGenerate, headTxt []string, collection *codeparser.Collection,
+	conf *ConfigGenerate, headTxt []string,
+	collection *codeparser.Collection, bundle *codeparser.Bundle,
 ) error {
 	f, err := os.OpenFile(
 		goBundleFileName(conf.BundlePkgPath),
@@ -200,7 +201,7 @@ func generateGoBundle(
 	var buf bytes.Buffer
 
 	pkgName := filepath.Base(conf.BundlePkgPath)
-	err = gengo.Write(&buf, conf.Locale, headTxt, pkgName, collection)
+	err = gengo.Write(&buf, conf.Locale, headTxt, pkgName, collection, bundle)
 	if err != nil {
 		return fmt.Errorf("generating Go bundle: %w", err)
 	}
@@ -239,13 +240,13 @@ func readOrCreateHeadTxt(conf *ConfigGenerate) ([]string, error) {
 	return nil, nil
 }
 
-func writeNativeSrcCatalog(
+func writeSourceCatalog(
 	conf *ConfigGenerate, poEncoder gettext.Encoder, po gettext.FilePO,
 ) error {
-	{ // Write the native source catalog `.po` file.
+	{ // Write the source catalog `.po` file.
 		fileName := filepath.Join(
 			conf.BundlePkgPath,
-			"native."+conf.Locale.String()+".po",
+			"source."+conf.Locale.String()+".po",
 		)
 		f, err := os.OpenFile(fileName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
 		if err != nil {
@@ -298,7 +299,7 @@ func updateTranslationCatalogs(
 		collMsgsByHash[msg.Hash] = msg
 	}
 
-	for l, b := range bundle.Translations {
+	for l, b := range bundle.Catalogs {
 		locale := l.String()
 
 		pluralForms, ok := cldr.ByTagOrBase(l)

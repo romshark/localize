@@ -12,7 +12,7 @@ import (
 )
 
 func ParseBundle(pkg *packages.Package, collection *Collection) (*Bundle, error) {
-	bundle := &Bundle{Translations: make(map[language.Tag]POFile)}
+	bundle := &Bundle{Catalogs: make(map[language.Tag]POFile)}
 	gettextDecoder := gettext.NewDecoder()
 
 	err := findPOFiles(pkg.Dir, func(locale language.Tag, file string) error {
@@ -24,7 +24,7 @@ func ParseBundle(pkg *packages.Package, collection *Collection) (*Bundle, error)
 		if err != nil {
 			return fmt.Errorf("decoding .po file (%q): %w", file, err)
 		}
-		bundle.Translations[locale] = POFile{
+		bundle.Catalogs[locale] = POFile{
 			Path:   file,
 			FilePO: po,
 		}
@@ -38,7 +38,7 @@ func ParseBundle(pkg *packages.Package, collection *Collection) (*Bundle, error)
 }
 
 type Bundle struct {
-	Translations map[language.Tag]POFile
+	Catalogs map[language.Tag]POFile
 }
 
 type POFile struct {
