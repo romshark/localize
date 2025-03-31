@@ -3,20 +3,30 @@
 ![Localize Banner](./localize_banner.svg)
 
 localize helps you localize your Go programs by generating and synchronizing
-[GNU gettext](https://www.gnu.org/software/gettext/) `.po` and `.pot` files.
-It generates highly efficient Go code to translate texts.
+[GNU gettext](https://www.gnu.org/software/gettext/) `.po`, `.pot` and generated
+`.go` files.
+
+- 🌐 Supports cardinal plural forms specified by
+  [CLDR 47](https://cldr.unicode.org/downloads/cldr-47).
+- 🛠️ Has [github.com/go-playground/locales](https://github.com/go-playground/locales)
+  built-in.
+- ⚡ Automatically generates highly efficient Go code from your translation bundles
+  to translate your texts at runtime and improve application startup time since no
+  costly runtime loading is necessary.
+- 🔍 Automatically lints your `.po` and `.go` files to ensure correctness.
 
 ## General Workflow
 
-1. Define texts in your code in the language of your code base (which will alway be used
-   as a last fallback option if no translation is found) using one of the provided
-   Reader methods such as `Text`, `Plural`, etc.
-2. Generate translation GNU gettext
-   `.po` and `.pot` files when you run from your source code:
-3. Translate `.po` files.
-4. Generate `.go` bundles from translated locale files.
-5. During app initialization, enable the bundles you need in `localize.New`.
-6. Use the same
+1. Wrap plain texts you'd like to translate like `print("Hello")` in your code
+   into one of the provided Reader methods such as `Text`:
+   `print(localizedReader.Text("Hello")`.
+2. Generate the localize bundle package using `localize generate`
+   ([see example](#example-workflow)) containing GNU gettext `.po` translation files,
+   the `.pot` template file and the `bundle_gen.go` Go bundle file.
+3. Add your generated bundles to all `localize.New` constructor calls.
+4. Translate the `.po` files.
+5. Use the same `localize generate` command to update your `bundle_gen.go` and `.po`/
+   `.pot` files linting them ✅ and keeping them in sync 🔄 when you add or remove texts.
 
 ## Example Workflow
 
