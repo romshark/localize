@@ -116,6 +116,8 @@ The generated bundle always contains the following files:
   - **Not editable** 🤖 Any manual change is always overwritten.
 - `catalog.pot` is a gettext template file used to create `.po` translation files.
   - **Not editable** 🤖 Any manual change is always overwritten.
+- `source.[locale].po` is a gettext translation file containing original source texts.
+  - **Not editable** 🤖 Any manual change is always overwritten.
 - `catalog.[locale].po` are gettext translation files
   for the locale specified in `[locale]`.
   - **Editable 📝**
