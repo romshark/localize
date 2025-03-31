@@ -85,7 +85,7 @@ func Write(
 			tpNameUnexp := strings.ToLower(tpName[:1]) + tpName[1:]
 
 			pluralMessages := []localize.Forms{}
-			for _, msg := range bundle.FilePO.Messages.List {
+			for _, msg := range bundle.Messages.List {
 				if msg.Obsolete || len(msg.MsgidPlural.Text.Lines) == 0 {
 					continue
 				}
