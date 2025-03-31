@@ -1,5 +1,8 @@
 # localize
 
+⚠️ This package is in early development.
+Expect bugs and breaking changes — not yet recommended for use in production. 🧪
+
 ![Localize Banner](./localize_banner.svg)
 
 localize helps you localize your Go programs by generating and synchronizing
