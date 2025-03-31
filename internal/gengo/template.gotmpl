@@ -272,10 +272,11 @@ func (r {{ .TypeName.Exported }}) Text(text string) (localized string) {
 // Common leading indentation is automatically removed.
 // For more information, see github.com/romshark/localize.Reader documentation.
 func (r {{ .TypeName.Exported }}) Block(text string) string {
-	s := {{ .TypeName.Unexported }}Static[text]
+	dedented := strfmt.Dedent(text)
+	s := {{ .TypeName.Unexported }}Static[dedented]
 	if s == "" {
 		// Fall back to source translation.
-		return strfmt.Dedent(text)
+		return dedented
 	}
 	return s
 }
