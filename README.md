@@ -1,7 +1,7 @@
 # localize
 
-⚠️ This package is in early development.
-Expect bugs and breaking changes — not yet recommended for use in production. 🧪
+⚠️ THIS IS AN EXPERIMENT in early development.
+Expect bugs and breaking changes — not recommended for use in production! 🧪
 
 ![Localize Banner](./localize_banner.svg)
 
