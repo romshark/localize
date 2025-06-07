@@ -1,7 +1,7 @@
 # localize
 
-⚠️ THIS IS AN EXPERIMENT in early development.
-Expect bugs and breaking changes — not recommended for use in production! 🧪
+⚠️ This experiment has been suspended in favor of https://github.com/romshark/toki ⚠️
+This repository now serves as a public archive only.
 
 ![Localize Banner](./localize_banner.svg)
 
